@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 
 class MainActivity : ComponentActivity() {
     private var state by mutableStateOf(PlexBrowserState(busy = true))
@@ -21,6 +22,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var accountClient: PlexAccountClient
     private var account: PlexAccount? = null
     private var connection: PlexConnection? = null
+    private var movieLibrary by mutableStateOf<MovieLibraryState?>(null)
+    private var posterRepository: PosterRepository? = null
+    private var pendingMovie: String? = null
     private var actionJob: Job? = null
     private var actionVersion = 0
     private val history = mutableListOf<BrowseLocation>()
@@ -46,19 +50,42 @@ class MainActivity : ComponentActivity() {
         setContent {
             val playback by PlaybackMonitor.state.collectAsState()
             DooplexTheme {
-                PlexBrowserScreen(
-                    state = state,
-                    playback = playback,
-                    onLink = ::linkAccount,
-                    onServer = ::selectServer,
-                    onLibrary = ::selectLibrary,
-                    onItem = ::selectItem,
-                    onNextPage = { changePage(forward = true) },
-                    onPreviousPage = { changePage(forward = false) },
-                    onBack = ::navigateBack,
-                    onDisconnect = ::disconnect,
-                    onRetry = ::retry,
-                )
+                val movies = movieLibrary
+                val posters = posterRepository
+                if (state.stage == BrowserStage.TITLES && movies != null && posters != null) {
+                    MoviesScreen(
+                        state = movies,
+                        posters = posters,
+                        accountName = state.accountName,
+                        playbackRunning = playback.running || state.busy,
+                        error = state.error,
+                        onBack = ::navigateBack,
+                        onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                    )
+                } else {
+                    PlexBrowserScreen(
+                        state = state,
+                        playback = playback,
+                        onLink = ::linkAccount,
+                        onServer = ::selectServer,
+                        onLibrary = ::selectLibrary,
+                        onItem = ::selectItem,
+                        onNextPage = { changePage(forward = true) },
+                        onPreviousPage = { changePage(forward = false) },
+                        onBack = ::navigateBack,
+                        onDisconnect = ::disconnect,
+                        onRetry = ::retry,
+                    )
+                }
+            }
+        }
+        lifecycleScope.launch {
+            PlaybackMonitor.state.collect { playback ->
+                if (!playback.running && playback.phase != "Ready") {
+                    val ratingKey = pendingMovie ?: return@collect
+                    pendingMovie = null
+                    movieLibrary?.refreshMovie(ratingKey)
+                }
             }
         }
         runAction {
@@ -108,6 +135,9 @@ class MainActivity : ComponentActivity() {
         runAction {
             val selected = accountClient.connect(server)
             val libraries = PlexClient(selected).libraries()
+            closeMovies()
+            posterRepository?.close()
+            posterRepository = PosterRepository(this, selected)
             connection = selected
             history.clear()
             state = state.copy(
@@ -122,10 +152,25 @@ class MainActivity : ComponentActivity() {
 
     private fun selectLibrary(library: PlexLibrary) {
         if (PlaybackMonitor.state.value.running) return
+        val selected = connection ?: return
+        closeMovies()
         history.clear()
         val location = BrowseLocation("/library/sections/${library.key}/all", library.title)
         history += location
-        runAction { showPage(location) }
+        if (library.type == "movie") {
+            cancelAction()
+            state = state.copy(
+                stage = BrowserStage.TITLES,
+                heading = library.title,
+                page = null,
+                busy = false,
+                error = null,
+                canGoBack = true,
+            )
+            movieLibrary = MovieLibraryState(library, selected, lifecycleScope)
+        } else {
+            runAction { showPage(location) }
+        }
     }
 
     private fun selectItem(item: PlexBrowseItem) {
@@ -172,11 +217,14 @@ class MainActivity : ComponentActivity() {
             BrowserStage.SERVERS -> Unit
             BrowserStage.LIBRARIES -> {
                 connection = null
+                posterRepository?.close()
+                posterRepository = null
                 history.clear()
                 runAction { showServers() }
             }
             BrowserStage.TITLES -> {
                 cancelAction()
+                closeMovies()
                 history.removeLastOrNull()
                 val parent = history.lastOrNull()
                 if (parent != null) {
@@ -212,6 +260,9 @@ class MainActivity : ComponentActivity() {
     private fun disconnect() {
         if (PlaybackMonitor.state.value.running) return
         runAction {
+            closeMovies()
+            posterRepository?.close()
+            posterRepository = null
             account = null
             connection = null
             history.clear()
@@ -221,11 +272,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun play(item: PlexBrowseItem) {
+    private fun play(item: PlexBrowseItem, startFromBeginning: Boolean = false) {
         val selected = connection ?: return
         runAction {
-            val media = PlexClient(selected).loadMedia(item.ratingKey)
+            val original = PlexClient(selected).loadMedia(item.ratingKey)
+            val media = if (startFromBeginning) original.copy(resumePositionMs = 0) else original
             val intent = ZidooPlayer(this).createIntent(media)
+            pendingMovie = item.ratingKey.takeIf { movieLibrary != null }
             PlaybackService.begin(this, selected, media)
             try {
                 nativePlayer.launch(intent)
@@ -234,6 +287,19 @@ class MainActivity : ComponentActivity() {
                 throw IllegalStateException("Android could not launch Zidoo's native player.")
             }
         }
+    }
+
+    private fun closeMovies() {
+        movieLibrary?.close()
+        movieLibrary = null
+        pendingMovie = null
+    }
+
+    override fun onDestroy() {
+        closeMovies()
+        posterRepository?.close()
+        posterRepository = null
+        super.onDestroy()
     }
 
     private fun cancelAction() {
@@ -253,6 +319,9 @@ class MainActivity : ComponentActivity() {
                 throw cancelled
             } catch (expired: PlexAuthenticationException) {
                 account = null
+                closeMovies()
+                posterRepository?.close()
+                posterRepository = null
                 connection = null
                 history.clear()
                 val message = try {

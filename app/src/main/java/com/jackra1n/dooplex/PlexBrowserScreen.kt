@@ -37,8 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -111,12 +109,12 @@ fun PlexBrowserScreen(
                 Spacer(Modifier.weight(1f))
             }
             if (state.canGoBack) {
-                BrowserButton(onClick = onBack, enabled = !playback.running) {
+                CinemaButton(onClick = onBack, enabled = !playback.running) {
                     Text("Back", fontSize = 18.sp)
                 }
             }
             if (state.stage != BrowserStage.SIGN_IN) {
-                BrowserButton(onClick = onDisconnect, enabled = !playback.running) {
+                CinemaButton(onClick = onDisconnect, enabled = !playback.running) {
                     Text("Disconnect", fontSize = 18.sp)
                 }
             }
@@ -152,7 +150,7 @@ fun PlexBrowserScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (firstItemKey != "empty") {
-                            BrowserButton(onClick = onRetry, enabled = !state.busy && !playback.running) {
+                            CinemaButton(onClick = onRetry, enabled = !state.busy && !playback.running) {
                                 Text("Retry", fontSize = 18.sp)
                             }
                         }
@@ -218,7 +216,7 @@ fun PlexBrowserScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 20.sp,
                                 )
-                                BrowserButton(
+                                CinemaButton(
                                     onClick = onRetry,
                                     enabled = !playback.running,
                                     modifier = Modifier.focusRequester(firstAction),
@@ -234,7 +232,7 @@ fun PlexBrowserScreen(
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        BrowserButton(onClick = onPreviousPage, enabled = !state.busy && !playback.running && page.start > 0) {
+                        CinemaButton(onClick = onPreviousPage, enabled = !state.busy && !playback.running && page.start > 0) {
                             Text("Previous", fontSize = 18.sp)
                         }
                         Text(
@@ -243,7 +241,7 @@ fun PlexBrowserScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 18.sp,
                         )
-                        BrowserButton(onClick = onNextPage, enabled = !state.busy && !playback.running && page.hasNext) {
+                        CinemaButton(onClick = onNextPage, enabled = !state.busy && !playback.running && page.hasNext) {
                             Text("Next", fontSize = 18.sp)
                         }
                     }
@@ -305,7 +303,7 @@ private fun SignInPanel(
                 fontSize = 18.sp,
             )
         }
-        BrowserButton(
+        CinemaButton(
             onClick = onLink,
             enabled = !state.busy || state.pin != null,
             modifier = Modifier.focusRequester(firstAction),
@@ -326,7 +324,7 @@ private fun BrowserChoice(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    BrowserButton(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth()) {
+    CinemaButton(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (subtitle.isNotBlank()) {
@@ -336,30 +334,6 @@ private fun BrowserChoice(
         Spacer(Modifier.width(24.dp))
         Text(action, fontSize = 18.sp)
     }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun BrowserButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        colors = ButtonDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            focusedContainerColor = MaterialTheme.colorScheme.primary,
-            focusedContentColor = MaterialTheme.colorScheme.onPrimary,
-        ),
-        scale = ButtonDefaults.scale(focusedScale = 1.03f),
-        content = content,
-    )
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

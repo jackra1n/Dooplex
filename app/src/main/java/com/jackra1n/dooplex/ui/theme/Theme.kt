@@ -14,16 +14,16 @@ import androidx.tv.material3.darkColorScheme
 fun DooplexTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Accent,
-            onPrimary = OnAccent,
-            background = Canvas,
-            onBackground = Foreground,
-            surface = Canvas,
-            onSurface = Foreground,
-            surfaceVariant = Panel,
-            onSurfaceVariant = MutedForeground,
-            error = Error,
-            onError = OnError,
+            primary = CinemaColors.Accent,
+            onPrimary = CinemaColors.OnAccent,
+            background = CinemaColors.Canvas,
+            onBackground = CinemaColors.Foreground,
+            surface = CinemaColors.Canvas,
+            onSurface = CinemaColors.Foreground,
+            surfaceVariant = CinemaColors.Panel,
+            onSurfaceVariant = CinemaColors.Muted,
+            error = CinemaColors.Error,
+            onError = CinemaColors.OnError,
         ),
         typography = Typography,
     ) {

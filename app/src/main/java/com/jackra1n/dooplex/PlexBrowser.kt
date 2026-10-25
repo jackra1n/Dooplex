@@ -17,9 +17,24 @@ data class PlexBrowseItem(
     val title: String,
     val subtitle: String,
     val childrenPath: String? = null,
+    val thumbPath: String? = null,
+    val summary: String = "",
+    val durationMs: Long = 0,
+    val viewOffsetMs: Long = 0,
+    val watched: Boolean = false,
+    val rating: Double? = null,
+    val contentRating: String = "",
+    val videoResolution: String = "",
 )
 data class PlexBrowsePage(val items: List<PlexBrowseItem>, val start: Int, val total: Int) {
     val hasNext: Boolean get() = items.isNotEmpty() && start + items.size < total
+}
+
+enum class MovieSort(val title: String, val plexValue: String) {
+    TITLE("Title A–Z", "titleSort:asc"),
+    ADDED("Recently added", "addedAt:desc"),
+    RELEASE("Release date", "originallyAvailableAt:desc"),
+    RATING("Rating", "rating:desc"),
 }
 
 class PlexAuthenticationException(message: String) : IOException(message)

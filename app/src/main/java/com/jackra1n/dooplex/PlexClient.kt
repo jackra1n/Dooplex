@@ -56,38 +56,128 @@ class PlexClient(private val connection: PlexConnection) {
             "A valid Plex library or children path is required."
         }
         require(start >= 0) { "A nonnegative Plex page offset is required." }
+        readBrowsePage(
+            path,
+            mapOf("X-Plex-Container-Start" to start.toString(), "X-Plex-Container-Size" to "40"),
+            start,
+        )
+    }
+
+    suspend fun moviePage(
+        libraryKey: String,
+        start: Int,
+        count: Int,
+        sort: MovieSort,
+        unwatchedOnly: Boolean,
+    ): PlexBrowsePage = withContext(Dispatchers.IO) {
+        require(RATING_KEY.matches(libraryKey)) { "A valid Plex movie library is required." }
+        require(start >= 0 && count in 1..MAX_PAGE_SIZE) { "A valid bounded Plex page is required." }
+        val parameters = linkedMapOf(
+            "type" to "1",
+            "sort" to sort.plexValue,
+            "X-Plex-Container-Start" to start.toString(),
+            "X-Plex-Container-Size" to count.toString(),
+        )
+        if (unwatchedOnly) parameters["unwatched"] = "1"
+        readBrowsePage("/library/sections/$libraryKey/all", parameters, start, count)
+    }
+
+    suspend fun movieDetails(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
+        requireRatingKey(ratingKey)
         try {
-            val container = JSONObject(request(
-                path,
-                mapOf("X-Plex-Container-Start" to start.toString(), "X-Plex-Container-Size" to "40"),
-                operation = "browse",
-            )).getJSONObject("MediaContainer")
+            val metadata = JSONObject(request("/library/metadata/$ratingKey", operation = "movie details"))
+                .getJSONObject("MediaContainer").optJSONArray("Metadata")
+                ?: throw IOException("Plex returned no movie details.")
+            if (metadata.length() != 1) throw IOException("Plex did not return one movie.")
+            val source = metadata.getJSONObject(0)
+            if (source.optString("ratingKey") != ratingKey || source.optString("type") != "movie") {
+                throw IOException("Plex returned details for a different title.")
+            }
+            parseBrowseItem(source) ?: throw IOException("Plex returned invalid movie details.")
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid movie details.")
+        }
+    }
+
+    fun posterUrl(thumbPath: String, width: Int, height: Int): String {
+        require(THUMB_PATH.matches(thumbPath)) { "A safe Plex movie thumbnail path is required." }
+        require(width in 1..MAX_POSTER_DIMENSION && height in 1..MAX_POSTER_DIMENSION) {
+            "Plex poster dimensions must be between 1 and 2048 pixels."
+        }
+        return url(
+            "/photo/:/transcode",
+            linkedMapOf(
+                "url" to thumbPath,
+                "width" to width.toString(),
+                "height" to height.toString(),
+                "minSize" to "1",
+                "upscale" to "0",
+            ),
+        )
+    }
+
+    private suspend fun readBrowsePage(
+        path: String,
+        parameters: Map<String, String>,
+        start: Int,
+        movieCount: Int? = null,
+    ): PlexBrowsePage {
+        try {
+            val container = JSONObject(request(path, parameters, operation = "browse"))
+                .getJSONObject("MediaContainer")
             val metadata = container.optJSONArray("Metadata")
+            if (movieCount != null && (metadata?.length() ?: 0) > movieCount) {
+                throw IOException("Plex did not return a bounded movie page.")
+            }
             val items = buildList {
                 if (metadata != null) for (index in 0 until metadata.length()) {
-                    val item = metadata.getJSONObject(index)
-                    val key = item.optString("ratingKey")
-                    val type = item.optString("type")
-                    if (!RATING_KEY.matches(key) || type !in setOf("movie", "show", "season", "episode")) continue
-                    val details = buildList {
-                        if (item.optInt("year") > 0) add(item.optInt("year").toString())
-                        if (type == "episode") {
-                            add("S${item.optInt("parentIndex")} · E${item.optInt("index")}")
-                            item.optString("grandparentTitle").takeIf { it.isNotBlank() }?.let { add(it) }
-                        }
-                        if (type == "season") add("${item.optInt("leafCount")} episodes")
-                    }.joinToString(" · ")
-                    add(PlexBrowseItem(key, item.optString("title", "Untitled"), details,
-                        if (type == "show" || type == "season") "/library/metadata/$key/children" else null))
+                    currentCoroutineContext().ensureActive()
+                    val source = metadata.getJSONObject(index)
+                    val item = parseBrowseItem(source)
+                    if (movieCount != null && (item == null || source.optString("type") != "movie")) {
+                        throw IOException("Plex returned an invalid title in the movie page.")
+                    }
+                    if (item != null) add(item)
                 }
             }
             val offset = container.optInt("offset", start)
             val total = container.optInt("totalSize", container.optInt("size", metadata?.length() ?: 0))
             if (offset < 0 || total < 0) throw IOException("Plex returned invalid page information.")
-            PlexBrowsePage(items, offset, total)
+            return PlexBrowsePage(items, offset, total)
         } catch (_: JSONException) {
             throw IOException("Plex returned invalid title information.")
         }
+    }
+
+    private fun parseBrowseItem(item: JSONObject): PlexBrowseItem? {
+        val key = item.optString("ratingKey")
+        val type = item.optString("type")
+        if (!RATING_KEY.matches(key) || type !in BROWSE_TYPES) return null
+        val subtitle = buildList {
+            if (item.optInt("year") > 0) add(item.optInt("year").toString())
+            if (type == "episode") {
+                add("S${item.optInt("parentIndex")} · E${item.optInt("index")}")
+                item.optString("grandparentTitle").takeIf { it.isNotBlank() }?.let { add(it) }
+            }
+            if (type == "season") add("${item.optInt("leafCount")} episodes")
+        }.joinToString(" · ")
+        val media = item.optJSONArray("Media")?.optJSONObject(0)
+        val duration = item.optLong("duration", media?.optLong("duration", 0) ?: 0).coerceAtLeast(0)
+        val offset = item.optLong("viewOffset", 0).coerceAtLeast(0)
+        return PlexBrowseItem(
+            ratingKey = key,
+            title = item.optString("title", "Untitled"),
+            subtitle = subtitle,
+            childrenPath = if (type == "show" || type == "season") "/library/metadata/$key/children" else null,
+            thumbPath = item.optString("thumb").takeIf { THUMB_PATH.matches(it) },
+            summary = item.optString("summary"),
+            durationMs = duration,
+            viewOffsetMs = if (duration > 0) offset.coerceAtMost(duration) else offset,
+            watched = item.optInt("viewCount", 0) > 0,
+            rating = item.optDouble("rating").takeIf { it.isFinite() },
+            contentRating = item.optString("contentRating"),
+            videoResolution = media?.optString("videoResolution").orEmpty(),
+        )
     }
 
     suspend fun loadMedia(ratingKey: String): PlaybackMedia = withContext(Dispatchers.IO) {
@@ -275,8 +365,12 @@ class PlexClient(private val connection: PlexConnection) {
 
     private companion object {
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+        const val MAX_PAGE_SIZE = 200
+        const val MAX_POSTER_DIMENSION = 2048
         val RATING_KEY = Regex("[0-9]+")
         val PART_KEY = Regex("/library/parts/[0-9]+/[0-9]+/file(?:\\.[A-Za-z0-9_-]+)?")
+        val THUMB_PATH = Regex("/library/metadata/[0-9]+/thumb(?:/[0-9]+)?")
+        val BROWSE_TYPES = setOf("movie", "show", "season", "episode")
         val PLAYBACK_STATES = setOf("buffering", "playing", "paused", "stopped")
 
         fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
