@@ -32,6 +32,64 @@ class PlexClient(private val connection: PlexConnection) {
         )
     }
 
+    suspend fun libraries(): List<PlexLibrary> = withContext(Dispatchers.IO) {
+        try {
+            val directories = JSONObject(request("/library/sections", operation = "libraries"))
+                .getJSONObject("MediaContainer").optJSONArray("Directory")
+            buildList {
+                if (directories != null) for (index in 0 until directories.length()) {
+                    val item = directories.getJSONObject(index)
+                    val key = item.optString("key")
+                    val type = item.optString("type")
+                    if (RATING_KEY.matches(key) && type in setOf("movie", "show")) {
+                        add(PlexLibrary(key, item.optString("title", "Library"), type))
+                    }
+                }
+            }
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid library information.")
+        }
+    }
+
+    suspend fun browse(path: String, start: Int = 0): PlexBrowsePage = withContext(Dispatchers.IO) {
+        require(Regex("/library/(?:sections/[0-9]+/all|metadata/[0-9]+/children)").matches(path)) {
+            "A valid Plex library or children path is required."
+        }
+        require(start >= 0) { "A nonnegative Plex page offset is required." }
+        try {
+            val container = JSONObject(request(
+                path,
+                mapOf("X-Plex-Container-Start" to start.toString(), "X-Plex-Container-Size" to "40"),
+                operation = "browse",
+            )).getJSONObject("MediaContainer")
+            val metadata = container.optJSONArray("Metadata")
+            val items = buildList {
+                if (metadata != null) for (index in 0 until metadata.length()) {
+                    val item = metadata.getJSONObject(index)
+                    val key = item.optString("ratingKey")
+                    val type = item.optString("type")
+                    if (!RATING_KEY.matches(key) || type !in setOf("movie", "show", "season", "episode")) continue
+                    val details = buildList {
+                        if (item.optInt("year") > 0) add(item.optInt("year").toString())
+                        if (type == "episode") {
+                            add("S${item.optInt("parentIndex")} · E${item.optInt("index")}")
+                            item.optString("grandparentTitle").takeIf { it.isNotBlank() }?.let { add(it) }
+                        }
+                        if (type == "season") add("${item.optInt("leafCount")} episodes")
+                    }.joinToString(" · ")
+                    add(PlexBrowseItem(key, item.optString("title", "Untitled"), details,
+                        if (type == "show" || type == "season") "/library/metadata/$key/children" else null))
+                }
+            }
+            val offset = container.optInt("offset", start)
+            val total = container.optInt("totalSize", container.optInt("size", metadata?.length() ?: 0))
+            if (offset < 0 || total < 0) throw IOException("Plex returned invalid page information.")
+            PlexBrowsePage(items, offset, total)
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid title information.")
+        }
+    }
+
     suspend fun loadMedia(ratingKey: String): PlaybackMedia = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         requireRatingKey(ratingKey)
