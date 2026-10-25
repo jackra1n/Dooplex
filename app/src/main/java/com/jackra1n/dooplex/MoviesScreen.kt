@@ -2,6 +2,11 @@ package com.jackra1n.dooplex
 
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,22 +53,33 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -77,7 +93,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 
-/** The grid stays mounted during details and native playback, retaining its exact scroll offset. */
+/**
+ * The mounted grid retains its scroll offset across details/playback. The alphabet's gutter stays
+ * reserved while its controls fade, so reaching the right edge never resizes or repaginates posters.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun MoviesScreen(
@@ -103,11 +122,23 @@ fun MoviesScreen(
     var wasPlaying by remember { mutableStateOf(playbackRunning) }
     var lastGeneration by remember(state) { mutableIntStateOf(state.generation) }
     var artworkRange by remember(state.generation) { mutableStateOf(IntRange.EMPTY) }
+    var railHasFocus by remember { mutableStateOf(false) }
+    var gridHasFocus by remember { mutableStateOf(false) }
+    var awaitingJump by remember { mutableStateOf(false) }
+    var railRestorePending by remember { mutableStateOf(false) }
+    var lastRailKey by rememberSaveable(state.library.key) { mutableStateOf<String?>(null) }
+    val railStatusFocus = remember { FocusRequester() }
+    val alphabet = remember(state.alphabet) { state.alphabet.filter { it.count > 0 } }
+    val railRequesters = remember(alphabet) {
+        alphabet.associate { it.key to FocusRequester() }
+    }
     val selected = state.selectedMovie
     val modalOpen = sortOpen || selected != null
 
     fun restoreGrid() {
         restoreToSort = false
+        awaitingJump = false
+        railRestorePending = false
         needsFocus = true
         restoreEpoch++
     }
@@ -120,11 +151,19 @@ fun MoviesScreen(
     LaunchedEffect(state.generation) {
         if (lastGeneration != state.generation) {
             lastGeneration = state.generation
-            focusedIndex = 0
-            grid.scrollToItem(0)
-            needsFocus = true
+            focusedIndex = state.jumpRequest?.index ?: 0
+            needsFocus = !railHasFocus && !awaitingJump && !railRestorePending
             restoreEpoch++
+            if (state.jumpRequest == null) grid.scrollToItem(0)
         }
+    }
+    LaunchedEffect(state.jumpRequest?.id) {
+        val jump = state.jumpRequest ?: return@LaunchedEffect
+        focusedIndex = jump.index
+        restoreToSort = false
+        // The server gives an absolute title-sort index; jump directly, including uncached pages.
+        grid.scrollToItem(jump.index)
+        restoreGrid()
     }
     LaunchedEffect(playbackRunning) {
         if (wasPlaying && !playbackRunning) {
@@ -133,9 +172,18 @@ fun MoviesScreen(
         }
         wasPlaying = playbackRunning
     }
+    LaunchedEffect(railRestorePending, alphabet, state.alphabetLoading, state.alphabetError, playbackRunning, modalOpen) {
+        if (!railRestorePending || playbackRunning || modalOpen) return@LaunchedEffect
+        withFrameNanos { }
+        val key = lastRailKey?.takeIf { it in railRequesters } ?: alphabet.firstOrNull()?.key
+        val requester = if (state.alphabetError != null) railStatusFocus else railRequesters[key] ?: railStatusFocus
+        requester.requestFocus()
+        if (!state.alphabetLoading) railRestorePending = false
+    }
     // No focus requests are keyed to page fills, details refreshes, or playback position reports.
     LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading) {
-        if (playbackRunning || modalOpen || (!needsFocus && (state.total > 0 || state.loading))) return@LaunchedEffect
+        if (playbackRunning || modalOpen ||
+            (!needsFocus && (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
         if (restoreToSort) {
             withFrameNanos { }
             sortFocus.requestFocus()
@@ -161,6 +209,7 @@ fun MoviesScreen(
                 restoreEpoch++
             }
             selected != null -> closeDetails()
+            railHasFocus -> restoreGrid()
             else -> onBack()
         }
     }
@@ -172,17 +221,50 @@ fun MoviesScreen(
     ) {
         val compact = maxWidth < 700.dp
         val edge = if (compact) 24.dp else 40.dp
+        val railWidth = if (compact) 56.dp else 64.dp
+        val gridWidth = maxWidth - railWidth
         val columns = when {
-            maxWidth >= 1080.dp -> 7
-            maxWidth >= 840.dp -> 6
-            maxWidth >= 700.dp -> 5
-            maxWidth >= 540.dp -> 4
-            maxWidth >= 400.dp -> 3
+            gridWidth >= 1500.dp -> 7
+            gridWidth >= 1000.dp -> 6
+            gridWidth >= 780.dp -> 5
+            gridWidth >= 600.dp -> 4
+            gridWidth >= 420.dp -> 3
             else -> 2
         }
         val density = LocalDensity.current
-        val posterPixels = with(density) { ((maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns).toPx() }
+        val posterPixels = with(density) {
+            ((gridWidth - edge - 18.dp - 18.dp * (columns - 1)) / columns).toPx()
+        }
         val artworkWidth = artworkBucket(posterPixels)
+        val controlsEnabled = !playbackRunning && !modalOpen
+        val lastIndex = (if (state.total > 0) state.total else 12) - 1
+        val atRightEdge = focusedIndex % columns == columns - 1 || focusedIndex == lastIndex
+        val showAlphabet = controlsEnabled &&
+            (railHasFocus || railRestorePending || awaitingJump || gridHasFocus && atRightEdge)
+        val railOpacity = animateFloatAsState(if (showAlphabet) 1f else 0f, tween(150), label = "alphabet reveal")
+
+        fun enterAlphabet() {
+            lastRailKey = lastRailKey?.takeIf { it in railRequesters }
+                ?: (if (state.sort == MovieSort.TITLE) alphabet.lastOrNull { it.start <= focusedIndex }?.key else null)
+                ?: alphabet.firstOrNull()?.key
+            needsFocus = false
+            if (showAlphabet) {
+                val target = if (state.alphabetError != null) railStatusFocus
+                    else railRequesters[lastRailKey] ?: railStatusFocus
+                target.requestFocus()
+                railRestorePending = alphabet.isEmpty() && state.alphabetLoading
+            } else {
+                railRestorePending = true
+            }
+        }
+
+        MovieBackdrop(
+            movie = state.itemAt(focusedIndex),
+            posters = posters,
+            artworkWidth = artworkWidth,
+            active = !scrolling && !playbackRunning,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         LaunchedEffect(state, state.generation, columns, playbackRunning) {
             if (playbackRunning) return@LaunchedEffect
@@ -228,11 +310,11 @@ fun MoviesScreen(
                 }
                 if (!compact) {
                     CinemaButton(
-                        onClick = { sortOpen = true },
+                        onClick = { restoreGrid(); sortOpen = true },
                         modifier = Modifier.focusRequester(sortFocus),
                         enabled = !playbackRunning && !modalOpen,
                     ) { ControlText("Sort · ${state.sort.title}  ⌄") }
-                    CinemaButton(onClick = { restoreToSort = false; state.setUnwatchedOnly(!state.unwatchedOnly) },
+                    CinemaButton(onClick = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
                         enabled = !playbackRunning && !modalOpen, selected = state.unwatchedOnly) {
                         ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
                     }
@@ -240,9 +322,9 @@ fun MoviesScreen(
             }
             if (compact) {
                 Row(Modifier.padding(horizontal = edge).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CinemaButton(onClick = { sortOpen = true }, modifier = Modifier.focusRequester(sortFocus),
+                    CinemaButton(onClick = { restoreGrid(); sortOpen = true }, modifier = Modifier.focusRequester(sortFocus),
                         enabled = !playbackRunning && !modalOpen) { ControlText("Sort · ${state.sort.title}") }
-                    CinemaButton(onClick = { restoreToSort = false; state.setUnwatchedOnly(!state.unwatchedOnly) },
+                    CinemaButton(onClick = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
                         enabled = !playbackRunning && !modalOpen, selected = state.unwatchedOnly) {
                         ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
                     }
@@ -270,9 +352,10 @@ fun MoviesScreen(
                     CinemaButton(onClick = state::retry, enabled = !playbackRunning && !modalOpen) { ControlText("Retry") }
                 }
             }
+            Row(Modifier.fillMaxWidth().weight(1f)) {
             if (state.total == 0 && !state.loading) {
                 Column(
-                    Modifier.fillMaxWidth().weight(1f).padding(edge),
+                    Modifier.weight(1f).fillMaxHeight().padding(edge),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -283,16 +366,17 @@ fun MoviesScreen(
                         color = CinemaColors.Muted, fontSize = 18.sp, modifier = Modifier.widthIn(max = 600.dp))
                     Spacer(Modifier.height(24.dp))
                     if (state.error != null) CinemaButton(onClick = state::retry, enabled = !playbackRunning && !modalOpen) { ControlText("Try again") }
-                    else if (state.unwatchedOnly) CinemaButton(onClick = { state.setUnwatchedOnly(false) }, enabled = !playbackRunning && !modalOpen) { ControlText("Show all movies") }
+                    else if (state.unwatchedOnly) CinemaButton(onClick = { restoreGrid(); state.setUnwatchedOnly(false) }, enabled = !playbackRunning && !modalOpen) { ControlText("Show all movies") }
                 }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns),
                     state = grid,
-                    contentPadding = PaddingValues(start = edge, end = edge, top = 7.dp, bottom = 40.dp),
+                    contentPadding = PaddingValues(start = edge, end = 18.dp, top = 7.dp, bottom = 40.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxWidth().weight(1f).focusGroup(),
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .onFocusChanged { gridHasFocus = it.hasFocus }.focusGroup(),
                 ) {
                     items(
                         count = if (state.total > 0) state.total else 12,
@@ -311,16 +395,57 @@ fun MoviesScreen(
                             artworkWidth = artworkWidth,
                             loadArtwork = !playbackRunning && !scrolling && index in artworkRange,
                             enabled = !playbackRunning && !modalOpen,
-                            modifier = Modifier.focusRequester(requester),
-                            onFocus = { focusedIndex = index },
+                            modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
+                                val count = if (state.total > 0) state.total else 12
+                                val rowEnd = index % columns == columns - 1 || index == count - 1
+                                if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
+                                    if (event.type == KeyEventType.KeyDown) enterAlphabet()
+                                    true
+                                } else false
+                            },
+                            onFocus = {
+                                focusedIndex = index
+                                railRestorePending = false
+                            },
                             onClick = {
                                 focusedIndex = index
+                                railRestorePending = false
                                 if (item != null) state.selectMovie(item) else state.requestRange(index, index)
                             },
                             placeholderLabel = "Movie ${index + 1}",
                         )
                     }
                 }
+            }
+                MovieAlphabetRail(
+                    letters = alphabet,
+                    loading = state.alphabetLoading,
+                    error = state.alphabetError,
+                    enabled = controlsEnabled && showAlphabet,
+                    titleSorted = state.sort == MovieSort.TITLE,
+                    requesters = railRequesters,
+                    statusFocus = railStatusFocus,
+                    onFocusChanged = { railHasFocus = it },
+                    onExit = ::restoreGrid,
+                    onRetry = {
+                        railRestorePending = true
+                        state.retryAlphabet()
+                    },
+                    onChoose = { letter ->
+                        lastRailKey = letter.key
+                        awaitingJump = true
+                        railRestorePending = false
+                        state.jumpToLetter(letter.key)
+                    },
+                    onLetterFocus = { lastRailKey = it },
+                    modifier = Modifier.width(railWidth).fillMaxHeight()
+                        .graphicsLayer {
+                            alpha = railOpacity.value
+                            translationX = (1f - railOpacity.value) * 8.dp.toPx()
+                        }
+                        .then(if (showAlphabet) Modifier else Modifier.clearAndSetSemantics { })
+                        .padding(end = if (compact) 12.dp else 20.dp, bottom = 16.dp),
+                )
             }
         }
     }
@@ -357,6 +482,156 @@ fun MoviesScreen(
                 onPlay(selected, fromBeginning)
             },
         )
+    }
+}
+
+/** Server-supplied buckets retain their labels/order, including digits and non-Latin scripts. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun MovieAlphabetRail(
+    letters: List<MovieLetter>,
+    loading: Boolean,
+    error: String?,
+    enabled: Boolean,
+    titleSorted: Boolean,
+    requesters: Map<String, FocusRequester>,
+    statusFocus: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit,
+    onExit: () -> Unit,
+    onRetry: () -> Unit,
+    onChoose: (MovieLetter) -> Unit,
+    onLetterFocus: (String) -> Unit,
+    modifier: Modifier,
+) {
+    val scroll = rememberScrollState()
+    Column(
+        modifier.onFocusChanged { onFocusChanged(it.hasFocus) }.focusGroup()
+            .onPreviewKeyEvent { event ->
+                when (event.key) {
+                    Key.DirectionLeft -> {
+                        if (event.type == KeyEventType.KeyDown) onExit()
+                        true
+                    }
+                    Key.DirectionRight -> true
+                    else -> false
+                }
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            "A–Z", color = CinemaColors.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 6.dp).semantics {
+                contentDescription = if (titleSorted) "Jump by title" else "Jump by title. Choosing a letter switches sort to title."
+            },
+        )
+        Text(if (titleSorted) "Jump" else "Sort", color = CinemaColors.Muted, fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 4.dp))
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val statusSpace = if (error != null || loading && letters.isNotEmpty()) 48.dp else 0.dp
+            val minimumCellHeight = with(LocalDensity.current) { 16.sp.toDp() }
+            val cellHeight = ((maxHeight - 8.dp - statusSpace) / letters.size.coerceAtLeast(1))
+                .coerceIn(minimumCellHeight, 30.dp.coerceAtLeast(minimumCellHeight))
+            Column(
+                Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (error != null) {
+                    Text("Unavailable", color = CinemaColors.Error, fontSize = 10.sp, maxLines = 2,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Title index could not be loaded. $error"
+                            liveRegion = LiveRegionMode.Polite
+                        })
+                }
+                if (letters.isEmpty() || error != null) {
+                    MovieLetterButton(
+                        label = if (error != null) "Retry" else if (loading) "Loading" else "None",
+                        description = if (error != null) "Retry title index" else if (loading) "Loading title index" else "No title groups available",
+                        enabled = enabled,
+                        onClick = if (error != null) onRetry else null,
+                        onFocus = {},
+                        modifier = Modifier.focusRequester(statusFocus).focusProperties {
+                            up = FocusRequester.Cancel
+                            down = letters.firstOrNull()?.let { requesters[it.key] } ?: FocusRequester.Cancel
+                        }.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
+                if (loading && letters.isNotEmpty()) {
+                    Text("Updating…", color = CinemaColors.Muted, fontSize = 10.sp,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
+                letters.forEachIndexed { index, letter ->
+                    androidx.compose.runtime.key(letter.key) {
+                        MovieLetterButton(
+                            label = letter.title,
+                            description = "Jump to ${letter.title}, ${letter.count} movies" +
+                                if (titleSorted) "" else ". Sorts by title",
+                            enabled = enabled,
+                            height = cellHeight,
+                            onClick = { onChoose(letter) },
+                            onFocus = { onLetterFocus(letter.key) },
+                            modifier = Modifier.focusRequester(requesters.getValue(letter.key)).focusProperties {
+                                up = if (index > 0) requesters.getValue(letters[index - 1].key)
+                                    else if (error != null) statusFocus else FocusRequester.Cancel
+                                down = if (index < letters.lastIndex) requesters.getValue(letters[index + 1].key)
+                                    else FocusRequester.Cancel
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun MovieLetterButton(
+    label: String,
+    description: String,
+    enabled: Boolean,
+    onClick: (() -> Unit)?,
+    onFocus: () -> Unit,
+    modifier: Modifier,
+    height: Dp = 32.dp,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val bringIntoView = remember { BringIntoViewRequester() }
+    val compactLabel = height < with(LocalDensity.current) { 24.sp.toDp() }
+    val fill = animateFloatAsState(if (focused) 0.25f else 0f, tween(140), label = "letter fill")
+    val scale = animateFloatAsState(if (focused) 1.08f else 1f, tween(160), label = "letter focus")
+    LaunchedEffect(focused) {
+        if (focused) bringIntoView.bringIntoView()
+    }
+    Box(
+        modifier.fillMaxWidth().bringIntoViewRequester(bringIntoView)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }.graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                alpha = if (enabled) 1f else 0.45f
+            }.clip(RoundedCornerShape(10.dp)).drawWithCache {
+                val sheen = Brush.verticalGradient(
+                    listOf(CinemaColors.Foreground.copy(alpha = 0.045f), Color.Transparent),
+                )
+                onDrawBehind {
+                    drawRect(CinemaColors.Foreground, alpha = fill.value)
+                    drawRect(sheen, alpha = fill.value * 4)
+                }
+            }.then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() }, indication = null,
+                    enabled = enabled, role = Role.Button, onClick = onClick,
+                ) else Modifier.focusable(enabled),
+            ).semantics { contentDescription = description }
+            .height(height).padding(horizontal = 3.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (focused) CinemaColors.Foreground else CinemaColors.Muted,
+            fontSize = if (label.length > 3 || compactLabel) 12.sp else 15.sp,
+            lineHeight = if (compactLabel) 14.sp else 18.sp, fontWeight = FontWeight.Medium,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -397,13 +672,15 @@ private fun MoviePosterCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
+    val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "poster focus")
+    val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "poster highlight")
     Column(
         modifier.onFocusChanged {
             focused = it.isFocused
             if (it.isFocused) onFocus()
         }.graphicsLayer {
-            scaleX = if (focused) 1.035f else 1f
-            scaleY = if (focused) 1.035f else 1f
+            scaleX = scale.value
+            scaleY = scale.value
         }.clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
             enabled = enabled, role = Role.Button, onClick = onClick,
@@ -416,8 +693,18 @@ private fun MoviePosterCard(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
             .background(CinemaColors.Panel)
-            .border(if (focused) 2.dp else 1.dp,
-                if (focused) CinemaColors.Accent else CinemaColors.Foreground.copy(alpha = 0.10f), shape)) {
+            .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
+            .drawWithCache {
+                val highlight = Brush.radialGradient(
+                    colors = listOf(CinemaColors.Foreground.copy(alpha = 0.20f), Color.Transparent),
+                    center = Offset(size.width * 0.5f, 0f),
+                    radius = size.height.coerceAtLeast(1f),
+                )
+                onDrawWithContent {
+                    drawContent()
+                    drawRect(highlight, alpha = light.value)
+                }
+            }) {
             PosterArtwork(movie?.thumbPath, posters, artworkWidth, loadArtwork,
                 Modifier.fillMaxSize(), movie?.title ?: placeholderLabel, metadataLoading = movie == null)
             if (movie?.watched == true) {
@@ -434,8 +721,8 @@ private fun MoviePosterCard(
                 }
             }
         }
-        Text(movie?.title ?: "Loading…", color = if (focused) CinemaColors.Accent else CinemaColors.Foreground,
-            fontSize = 16.sp, fontWeight = if (focused) FontWeight.SemiBold else FontWeight.Medium,
+        Text(movie?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.85f),
+            fontSize = 16.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(movie?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -493,9 +780,9 @@ private fun MovieSortDialog(current: MovieSort, onDismiss: () -> Unit, onChoose:
         Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopEnd) {
             Column(
                 Modifier.padding(top = 70.dp).widthIn(max = 340.dp).fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas)))
-                    .border(1.dp, CinemaColors.Foreground.copy(alpha = 0.18f), RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(Brush.verticalGradient(listOf(CinemaColors.Panel.copy(alpha = 0.98f), CinemaColors.Canvas.copy(alpha = 0.98f))))
+                    .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.075f), RoundedCornerShape(30.dp))
                     .padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -539,9 +826,9 @@ private fun MovieDetailsDialog(
             val posterWidth = if (wide) 210.dp else 120.dp
             val bucket = artworkBucket(with(LocalDensity.current) { posterWidth.toPx() })
             Column(Modifier.widthIn(max = 980.dp).fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas)))
-                .border(1.dp, CinemaColors.Foreground.copy(alpha = 0.18f), RoundedCornerShape(26.dp))
+                .clip(RoundedCornerShape(32.dp))
+                .background(Brush.verticalGradient(listOf(CinemaColors.Panel.copy(alpha = 0.98f), CinemaColors.Canvas.copy(alpha = 0.98f))))
+                .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.075f), RoundedCornerShape(32.dp))
                 .verticalScroll(rememberScrollState()).padding(if (wide) 32.dp else 22.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(if (wide) 30.dp else 20.dp)) {
