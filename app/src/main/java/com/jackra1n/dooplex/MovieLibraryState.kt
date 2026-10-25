@@ -20,7 +20,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Main-thread-confined, bounded movie window: 96 titles/page, at most 12 pages and two requests.
- * Query changes discard old results; playback refreshes preserve the viewport generation.
+ * Cancelled work retains its request slot until its IO has unwound. Query changes discard old pages;
+ * alphabet counts follow the filter, not the sort, and use a separate revision to reject stale work.
+ * Jumps publish repeatable title-sort events only after page totals agree with server bucket counts.
+ * Playback refreshes preserve the viewport generation while invalidating Unwatched membership/counts.
  */
 @Stable
 class MovieLibraryState(
@@ -47,6 +50,14 @@ class MovieLibraryState(
         private set
     var detailsError by mutableStateOf<String?>(null)
         private set
+    var alphabet by mutableStateOf<List<MovieLetter>>(emptyList())
+        private set
+    var alphabetLoading by mutableStateOf(true)
+        private set
+    var alphabetError by mutableStateOf<String?>(null)
+        private set
+    var jumpRequest by mutableStateOf<MovieJump?>(null)
+        private set
 
     private val lifetime = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + lifetime + Dispatchers.Main.immediate)
@@ -62,6 +73,13 @@ class MovieLibraryState(
     private var pendingDetails: MetadataWork? = null
     private var refreshError: String? = null
     private var initialized = false
+    private var totalReady = false
+    private var alphabetReady = false
+    private var alphabetPending = true
+    private var alphabetVersion = 0L
+    private var jumpId = 0L
+    private var pendingJump: String? = null
+    private var jumpPrefetchPage: Int? = null
     private var closed = false
     private var epoch = 0
     private var workId = 0L
@@ -92,6 +110,12 @@ class MovieLibraryState(
         val detailsVersion: Long?,
     ) : Work
 
+    private data class AlphabetWork(
+        override val epoch: Int,
+        val version: Long,
+        val unwatched: Boolean,
+    ) : Work
+
     private data class Running(val work: Work, val job: Job)
     private data class MetadataOverride(val item: PlexBrowseItem, val revision: Long)
 
@@ -109,6 +133,9 @@ class MovieLibraryState(
         if (closed) return
         this.firstIndex = firstIndex.coerceAtLeast(0)
         this.lastIndex = lastIndex.coerceAtLeast(this.firstIndex)
+        jumpPrefetchPage?.let { page ->
+            if (page in this.firstIndex / pageSize..this.lastIndex / pageSize) jumpPrefetchPage = null
+        }
         updateWindow()
         running.values.forEach { active ->
             val page = active.work as? PageWork
@@ -127,7 +154,23 @@ class MovieLibraryState(
     fun setUnwatchedOnly(unwatchedOnly: Boolean) {
         if (closed || this.unwatchedOnly == unwatchedOnly) return
         unwatchedFilter = unwatchedOnly
+        invalidateAlphabet()
         resetQuery()
+    }
+
+    fun jumpToLetter(key: String) {
+        if (closed || alphabet.none { it.key == key && it.count > 0 }) return
+        if (sort != MovieSort.TITLE) setSort(MovieSort.TITLE)
+        pendingJump = key
+        publishPendingJump()
+        pump()
+    }
+
+    fun retryAlphabet() {
+        if (closed || alphabetLoading) return
+        // Refresh both snapshots: a changed library can make only retrying the counts disagree forever.
+        invalidateMembership(0)
+        pump()
     }
 
     fun retry() {
@@ -194,12 +237,15 @@ class MovieLibraryState(
         metadataVersions.clear()
         overrides.clear()
         selectedMovie = null
+        alphabet = emptyList()
+        alphabetLoading = false
+        clearJump()
     }
 
     private fun resetQuery() {
         epoch++
         generation++
-        running.values.forEach { it.job.cancel() }
+        running.values.forEach { if (it.work !is AlphabetWork) it.job.cancel() }
         pendingDetails = null
         refreshes.clear()
         pages.clear()
@@ -213,14 +259,59 @@ class MovieLibraryState(
         detailsVersion++
         detailsLoading = false
         detailsError = null
+        clearJump()
         total = 0
         initialized = false
+        totalReady = false
         loading = true
         error = null
         firstIndex = 0
         lastIndex = 0
         updateWindow()
         pump()
+    }
+
+    private fun clearJump() {
+        pendingJump = null
+        jumpPrefetchPage = null
+        jumpRequest = null
+    }
+
+    private fun invalidateAlphabet() {
+        alphabetVersion++
+        alphabet = emptyList()
+        alphabetReady = false
+        alphabetPending = true
+        alphabetLoading = true
+        alphabetError = null
+        clearJump()
+        running.values.forEach { if (it.work is AlphabetWork) it.job.cancel() }
+    }
+
+    private fun reconcileAlphabet() {
+        if (!alphabetReady || !totalReady) return
+        val bucketTotal = alphabet.lastOrNull()?.let { it.start + it.count } ?: 0
+        if (bucketTotal != total) {
+            // Separate PMS snapshots can disagree during a library update; never guess an offset.
+            alphabet = emptyList()
+            alphabetReady = false
+            alphabetError = "Plex alphabet counts changed; retry the alphabet."
+            clearJump()
+            return
+        }
+        publishPendingJump()
+    }
+
+    private fun publishPendingJump() {
+        val key = pendingJump ?: return
+        if (sort != MovieSort.TITLE || !totalReady || !alphabetReady || alphabetLoading) return
+        val letter = alphabet.firstOrNull { it.key == key && it.count > 0 } ?: return
+        pendingJump = null
+        jumpPrefetchPage = letter.start / pageSize
+        firstIndex = letter.start
+        lastIndex = letter.start
+        updateWindow()
+        jumpRequest = MovieJump(++jumpId, letter.start)
     }
 
     private fun updateWindow() {
@@ -234,12 +325,17 @@ class MovieLibraryState(
             val lastPage = (total - 1) / pageSize
             val first = firstIndex.coerceAtMost(total - 1) / pageSize
             // A real viewport is small; even an oversized caller range cannot grow the cache/queue.
-            val last = minOf(lastIndex.coerceAtMost(total - 1) / pageSize, first + MAX_PAGES - 1)
+            val requestedLast = minOf(lastIndex.coerceAtMost(total - 1) / pageSize, first + MAX_PAGES - 1)
+            val jumpPage = jumpPrefetchPage?.takeIf { it in 0..lastPage }
+            val last = if (jumpPage != null && jumpPage !in first..requestedLast &&
+                requestedLast - first + 1 == MAX_PAGES
+            ) requestedLast - 1 else requestedLast
             visiblePages = (first..last).toList()
             wantedPages = buildList {
                 addAll(visiblePages)
+                if (jumpPage != null && jumpPage !in visiblePages) add(jumpPage)
                 for (neighbor in listOf(last + 1, first - 1, last + 2)) {
-                    if (size < MAX_PAGES && neighbor in 0..lastPage) add(neighbor)
+                    if (size < MAX_PAGES && neighbor in 0..lastPage && neighbor !in this) add(neighbor)
                 }
             }
         }
@@ -255,11 +351,19 @@ class MovieLibraryState(
             pendingDetails = null
             return it
         }
+        // Details are interactive; visible/activated pages outrank background metadata and alphabet.
+        val visible = visiblePages.firstOrNull(::needsPage)
+            ?: jumpPrefetchPage?.takeIf(::needsPage)
+        if (visible != null) return PageWork(epoch, visible, sort, unwatchedOnly, metadataRevision)
         refreshes.entries.firstOrNull()?.let { (key, work) ->
             refreshes.remove(key)
             return work
         }
-        val page = visiblePages.firstOrNull(::needsPage) ?: wantedPages.firstOrNull(::needsPage) ?: return null
+        if (alphabetPending) {
+            alphabetPending = false
+            return AlphabetWork(epoch, alphabetVersion, unwatchedOnly)
+        }
+        val page = wantedPages.firstOrNull(::needsPage) ?: return null
         return PageWork(epoch, page, sort, unwatchedOnly, metadataRevision)
     }
 
@@ -269,7 +373,7 @@ class MovieLibraryState(
         if (urgent && running.size >= MAX_REQUESTS) {
             running.values.forEach { active ->
                 val work = active.work as? PageWork
-                if (work != null && work.page !in visiblePages) active.job.cancel()
+                if (work != null && work.page !in visiblePages && work.page != jumpPrefetchPage) active.job.cancel()
             }
         }
         while (running.size < MAX_REQUESTS) {
@@ -280,6 +384,7 @@ class MovieLibraryState(
                     when (work) {
                         is PageWork -> loadPage(work)
                         is MetadataWork -> loadMetadata(work)
+                        is AlphabetWork -> loadAlphabet(work)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -318,9 +423,22 @@ class MovieLibraryState(
         pageFailures.remove(work.page)
         initialized = true
         total = page.total
+        totalReady = true
         loading = false
         updateWindow()
+        reconcileAlphabet()
         evictPages()
+    }
+
+    private suspend fun loadAlphabet(work: AlphabetWork) {
+        val letters = client.movieAlphabet(library.key, work.unwatched)
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent(work)) return
+        alphabet = letters
+        alphabetReady = true
+        alphabetLoading = false
+        alphabetError = null
+        reconcileAlphabet()
     }
 
     private suspend fun loadMetadata(work: MetadataWork) {
@@ -344,17 +462,21 @@ class MovieLibraryState(
         }
         failedRefreshes.remove(movie.ratingKey)
         if (failedRefreshes.isEmpty()) refreshError = null
-        if (unwatchedOnly && movie.watched && previous?.watched != true) {
+        if (unwatchedOnly && (previous == null || movie.watched != previous.watched)) {
             invalidateMembership(changedPage ?: 0, movie.ratingKey)
         }
     }
 
-    private fun invalidateMembership(firstChangedPage: Int, refreshedKey: String) {
+    private fun invalidateMembership(firstChangedPage: Int, refreshedKey: String? = null) {
         // Keep the public generation, populated slots, total, and viewport until replacements arrive.
         epoch++
+        totalReady = false
+        invalidateAlphabet()
         running.values.forEach { it.job.cancel() }
         pageFailures.clear()
         stalePages.addAll(pages.keys.filter { it >= firstChangedPage })
+        // Even removal beyond the viewport must refresh a visible page's total before a jump.
+        stalePages.addAll(visiblePages.filter { it in pages })
         val refreshKeys = refreshes.keys.toMutableSet()
         running.values.forEach { active ->
             val metadata = active.work as? MetadataWork
@@ -388,7 +510,9 @@ class MovieLibraryState(
     private fun cachedMovie(ratingKey: String): PlexBrowseItem? =
         pages.values.firstNotNullOfOrNull { page -> page.items.firstOrNull { it.ratingKey == ratingKey } }
 
-    private fun isCurrent(work: Work): Boolean = !closed && lifetime.isActive && work.epoch == epoch
+    private fun isCurrent(work: Work): Boolean = !closed && lifetime.isActive &&
+        if (work is AlphabetWork) work.version == alphabetVersion && work.unwatched == unwatchedOnly
+        else work.epoch == epoch
 
     private fun recordFailure(work: Work, failure: Exception) {
         val message = if (failure is IOException) failure.message ?: "Plex could not load the movies." else "Plex could not load the movies."
@@ -404,6 +528,12 @@ class MovieLibraryState(
                     refreshError = message
                 }
             }
+            is AlphabetWork -> {
+                alphabetReady = false
+                alphabetLoading = false
+                alphabetError = if (failure is IOException) message else "Plex could not load the alphabet."
+                clearJump()
+            }
         }
     }
 
@@ -415,7 +545,7 @@ class MovieLibraryState(
         if (total == 0) pages.clear()
         else pages.keys.filter { it.toLong() * pageSize >= total }.forEach { pages.remove(it) }
         while (pages.size > MAX_PAGES) {
-            val victim = pages.keys.filter { it !in visiblePages }.maxByOrNull { page ->
+            val victim = pages.keys.filter { it !in visiblePages && it != jumpPrefetchPage }.maxByOrNull { page ->
                 minOf(kotlin.math.abs(page - visiblePages.first()), kotlin.math.abs(page - visiblePages.last()))
             } ?: break
             pages.remove(victim)

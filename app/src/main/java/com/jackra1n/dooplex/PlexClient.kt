@@ -82,6 +82,53 @@ class PlexClient(private val connection: PlexConnection) {
         readBrowsePage("/library/sections/$libraryKey/all", parameters, start, count)
     }
 
+    /**
+     * PMS FirstCharacter Directory.size is the number of titles in that bucket, not its index.
+     * Preserve server collation (including punctuation/Unicode); returned keys are opaque identities,
+     * never URLs to follow. See plexapi.library.FirstCharacter for the endpoint/count contract.
+     */
+    suspend fun movieAlphabet(libraryKey: String, unwatchedOnly: Boolean): List<MovieLetter> =
+        withContext(Dispatchers.IO) {
+            require(RATING_KEY.matches(libraryKey)) { "A valid Plex movie library is required." }
+            val parameters = linkedMapOf("type" to "1", "sort" to MovieSort.TITLE.plexValue)
+            if (unwatchedOnly) parameters["unwatched"] = "1"
+            try {
+                val container = JSONObject(request(
+                    "/library/sections/$libraryKey/firstCharacter",
+                    parameters,
+                    operation = "movie alphabet",
+                )).getJSONObject("MediaContainer")
+                val directories = container.optJSONArray("Directory")
+                if (directories == null) {
+                    if (container.has("Directory") || container.opt("size")?.toString()?.toIntOrNull() != 0) {
+                        throw IOException("Plex returned invalid movie alphabet information.")
+                    }
+                    return@withContext emptyList()
+                }
+                val keys = mutableSetOf<String>()
+                var start = 0L
+                buildList {
+                    for (index in 0 until directories.length()) {
+                        currentCoroutineContext().ensureActive()
+                        val directory = directories.getJSONObject(index)
+                        val key = directory.opt("key") as? String
+                        val title = directory.opt("title") as? String
+                        val count = directory.opt("size")?.toString()?.toLongOrNull()
+                        if (key.isNullOrBlank() || title.isNullOrBlank() || !keys.add(key) ||
+                            count == null || count !in 0..Int.MAX_VALUE.toLong() ||
+                            start + count > Int.MAX_VALUE
+                        ) {
+                            throw IOException("Plex returned invalid movie alphabet information.")
+                        }
+                        if (count > 0) add(MovieLetter(key, title, start.toInt(), count.toInt()))
+                        start += count
+                    }
+                }
+            } catch (_: JSONException) {
+                throw IOException("Plex returned invalid movie alphabet information.")
+            }
+        }
+
     suspend fun movieDetails(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
         requireRatingKey(ratingKey)
         try {
@@ -305,6 +352,9 @@ class PlexClient(private val connection: PlexConnection) {
             if (sessionId != null) client.setRequestProperty("X-Plex-Session-Identifier", sessionId)
             val status = client.responseCode
             currentCoroutineContext().ensureActive()
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
+                throw PlexRequestException("Plex server access was denied (HTTP $status); reconnect to the server.")
+            }
             if (status !in 200..299) {
                 throw PlexRequestException("Plex $operation request failed (HTTP $status).")
             }
