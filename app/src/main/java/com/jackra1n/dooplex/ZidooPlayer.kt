@@ -57,7 +57,7 @@ class ZidooPlayer(private val context: Context) {
             val video = response.optJSONObject("video") ?: unsupported("missing video information")
             val path = video.opt("path") as? String ?: unsupported("missing media path")
             if (path.isBlank()) unsupported("empty media path")
-            if (!matchesMedia(path, expected)) {
+            if (!NativeMediaIdentity.matches(path, expected)) {
                 throw IllegalStateException(
                     "Zidoo is reporting a different media path, or a path that cannot be matched " +
                         "to this Plex original. No playback state will be attributed to this item."
@@ -146,36 +146,6 @@ class ZidooPlayer(private val context: Context) {
             connection.disconnect()
         }
     }
-
-    private fun matchesMedia(reported: String, expected: URI): Boolean {
-        val actual = try {
-            URI(reported).normalize()
-        } catch (_: Exception) {
-            return false
-        }
-        // Firmware may expose an HTTP media URL or just its absolute request path.
-        // Never match a title, basename, suffix, or an unrelated local filesystem path.
-        if (actual.rawPath != expected.rawPath || actual.rawFragment != null) return false
-        if (actual.isAbsolute) {
-            if (!actual.scheme.equals(expected.scheme, ignoreCase = true) ||
-                !actual.host.equals(expected.host, ignoreCase = true) ||
-                effectivePort(actual) != effectivePort(expected) || actual.rawUserInfo != expected.rawUserInfo
-            ) return false
-        } else if (actual.rawAuthority != null || !reported.startsWith("/")) {
-            return false
-        }
-        return mediaQuery(actual) == mediaQuery(expected)
-    }
-
-    private fun mediaQuery(uri: URI): Map<String, List<String>> {
-        val parsed = Uri.parse(uri.toString())
-        return parsed.queryParameterNames
-            .filterNot { it.equals("X-Plex-Token", ignoreCase = true) }
-            .associateWith { parsed.getQueryParameters(it) }
-    }
-
-    private fun effectivePort(uri: URI): Int =
-        if (uri.port != -1) uri.port else if (uri.scheme.equals("https", ignoreCase = true)) 443 else 80
 
     private fun mediaUri(url: String): URI {
         val uri = try {

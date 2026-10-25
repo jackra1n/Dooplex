@@ -42,7 +42,8 @@ class PlaybackService : Service() {
     private class Session(val client: PlexClient, val media: PlaybackMedia) {
         val id: String = UUID.randomUUID().toString()
         var observedPositionMs: Long? = null
-        var lastState: String? = null
+        var liveReported = false
+        var liveFailure: String? = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -115,8 +116,8 @@ class PlaybackService : Service() {
                     }
                     missingStatusCount = 0
                     current.observedPositionMs = status.positionMs
-                    current.lastState = status.state
                     current.client.timeline(media, status.state, status.positionMs, current.id)
+                    current.liveReported = true
                     PlaybackMonitor.state.value = PlaybackProofStatus(
                         phase = "Reported ${status.state} to Plex",
                         title = media.title,
@@ -133,9 +134,10 @@ class PlaybackService : Service() {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (exception: Exception) {
+                current.liveFailure = exception.message ?: "Could not read native-player state or report it to Plex."
                 PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
                     phase = "Live reporting failed",
-                    detail = exception.message ?: "Could not read native-player state or report it to Plex.",
+                    detail = current.liveFailure.orEmpty(),
                 )
             }
         }
@@ -157,16 +159,16 @@ class PlaybackService : Service() {
                 if (position == null) {
                     PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
                         phase = "Player returned without a position",
-                        detail = "No verified playback position was available. No fabricated stop/progress update was sent to Plex.",
+                        detail = current.liveFailure
+                            ?: "No verified playback position was available. No fabricated stop/progress update was sent to Plex.",
                     )
                 } else {
                     current.client.timeline(current.media, "stopped", position, current.id)
                     PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
-                        phase = "Reported stopped to Plex",
+                        phase = if (current.liveFailure != null) "Stopped; live reporting failed" else "Reported stopped to Plex",
                         positionMs = position,
-                        detail = if (current.lastState == null) {
-                            "The player returned a position, but live reporting was not established. " +
-                                "A final position alone does not prove dashboard synchronization."
+                        detail = current.liveFailure ?: if (!current.liveReported) {
+                            "The player returned a position, but no live telemetry was received before it returned."
                         } else {
                             "Final position sent. Check Plex resume position and the end of the active session."
                         },
@@ -177,7 +179,10 @@ class PlaybackService : Service() {
             } catch (exception: Exception) {
                 PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
                     phase = "Final Plex update failed",
-                    detail = exception.message ?: "Could not report the final position to Plex.",
+                    detail = listOfNotNull(
+                        current.liveFailure,
+                        exception.message ?: "Could not report the final position to Plex.",
+                    ).joinToString(" "),
                 )
             } finally {
                 releaseSession()
