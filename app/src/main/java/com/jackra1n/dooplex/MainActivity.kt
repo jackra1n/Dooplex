@@ -147,7 +147,8 @@ class MainActivity : ComponentActivity() {
                     }
                     for (collection in listOfNotNull(movieLibrary, showLibrary)) key(collection) {
                         val type = collection.library.type
-                        KeptScreen(shown == type) {
+                        // The start screen covers Home, so the libraries draw once beneath it.
+                        KeptScreen(shown == type, warm = splash) {
                             destinations.SaveableStateProvider("$serverId:$type:${collection.library.key}") {
                                 CollectionScreen(
                                     state = collection,
@@ -445,11 +446,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Switches at once instead of as a busy action, which would disable and re-enable every card.
+     * The choice is saved in the background; a failed save only forgets it for the next start.
+     */
     private fun selectLibrary(library: PlexLibrary) {
         if (PlaybackMonitor.state.value.running || state.busy || connection == null) return
-        runAction {
-            saveLibrarySelection(library)
-            openLibrary(library)
+        openLibrary(library)
+        lifecycleScope.launch {
+            try {
+                saveLibrarySelection(library)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+            }
         }
     }
 
