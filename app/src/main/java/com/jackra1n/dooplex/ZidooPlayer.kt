@@ -38,44 +38,21 @@ class ZidooPlayer(private val context: Context) {
         }
     }
 
+    /**
+     * Reads matching native playback proof, trying the firmware alias when the primary is idle
+     * or incomplete. Missing identity returns null and must be sampled again until player return;
+     * it never proves that this item is playing. Malformed or mismatched telemetry remains an error.
+     */
     suspend fun readStatus(media: PlaybackMedia): NativePlaybackStatus? = withContext(Dispatchers.IO) {
         val expected = mediaUri(media.streamUrl)
-        var sawIdle = false
+        var sawUnavailable = false
         for (endpoint in STATUS_ENDPOINTS) {
             val response = requestStatus(endpoint) ?: continue // HTTP 404: try the firmware alias.
-            when (requiredLong(response, "status")) {
-                806L -> {
-                    sawIdle = true
-                    continue
-                }
-                200L -> Unit
-                else -> throw IllegalStateException(
-                    "Zidoo's native status API returned an unsupported error code. " +
-                        "Check the firmware's getPlayStatus support; live Plex reporting is unavailable."
-                )
-            }
-            val video = response.optJSONObject("video") ?: unsupported("missing video information")
-            val path = video.opt("path") as? String ?: unsupported("missing media path")
-            if (path.isBlank()) unsupported("empty media path")
-            if (!NativeMediaIdentity.matches(path, expected)) {
-                throw IllegalStateException(
-                    "Zidoo is reporting a different media path, or a path that cannot be matched " +
-                        "to this Plex original. No playback state will be attributed to this item."
-                )
-            }
-            // Vendor changeStatus documentation: 0 = pause, 1 = play. The established
-            // zidoo-player client also decodes video.status == 1 as playing.
-            val state = when (requiredLong(video, "status")) {
-                0L -> "paused"
-                1L -> "playing"
-                else -> unsupported("unknown numeric playback state")
-            }
-            val position = requiredLong(video, "currentPosition")
-            val duration = requiredLong(video, "duration")
-            if (position < 0 || duration <= 0) unsupported("invalid playback timing")
-            return@withContext NativePlaybackStatus(state, position, duration)
+            val status = NativeTelemetryDecoder.decode(response, expected)
+            if (status != null) return@withContext status
+            sawUnavailable = true
         }
-        if (sawIdle) return@withContext null
+        if (sawUnavailable) return@withContext null
         throw IllegalStateException(
             "Neither native getPlayStatus endpoint exists on localhost:9529. " +
                 "Enable Zidoo's network control service or use firmware with native video status support."
@@ -124,13 +101,13 @@ class ZidooPlayer(private val context: Context) {
                     if (count == -1) break
                     size += count
                 }
-                if (size > MAX_STATUS_BYTES) unsupported("oversized response")
+                if (size > MAX_STATUS_BYTES) NativeTelemetryDecoder.unsupported("oversized response")
                 String(bytes, 0, size, Charsets.UTF_8)
             }
             return try {
                 JSONObject(body)
             } catch (_: org.json.JSONException) {
-                unsupported("invalid JSON response")
+                NativeTelemetryDecoder.unsupported("invalid JSON response")
             }
         } catch (_: IOException) {
             throw IllegalStateException(
@@ -158,18 +135,6 @@ class ZidooPlayer(private val context: Context) {
         ) { "Plex must provide an absolute HTTP(S) original-media URL without a fragment." }
         return uri
     }
-
-    private fun requiredLong(json: JSONObject, key: String): Long = when (val value = json.opt(key)) {
-        is Int -> value.toLong()
-        is Long -> value
-        else -> unsupported("missing or non-integer $key")
-    }
-
-    private fun unsupported(detail: String): Nothing = throw IllegalStateException(
-        "Unsupported Zidoo native telemetry ($detail). " +
-            "This firmware must expose a matching video.path, status 0/1, currentPosition and duration " +
-            "in milliseconds before live Plex reporting can be used."
-    )
 
     companion object {
         private const val MAX_STATUS_BYTES = 64 * 1024

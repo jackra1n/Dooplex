@@ -44,6 +44,7 @@ class PlaybackService : Service() {
         var observedPositionMs: Long? = null
         var liveReported = false
         var liveFailure: String? = null
+        var telemetryUnavailable = false
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -95,26 +96,20 @@ class PlaybackService : Service() {
         )
         pollJob = scope.launch {
             val player = ZidooPlayer(this@PlaybackService)
-            var missingStatusCount = 0
             try {
                 while (isActive) {
                     delay(3_000)
                     val status = player.readStatus(media)
                     if (status == null) {
-                        missingStatusCount++
+                        current.telemetryUnavailable = true
                         PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
-                            phase = "Native player state unavailable",
-                            detail = "No matching playback telemetry. No progress or playing state is being fabricated.",
+                            phase = "Waiting for matching native telemetry",
+                            detail = "Native media identity or state is unavailable. Still sampling until the player returns; " +
+                                "no unverified progress or playing state is sent to Plex.",
                         )
-                        if (missingStatusCount >= 10) {
-                            throw IllegalStateException(
-                                "The native player did not expose matching playback telemetry. " +
-                                    "Live Plex reporting could not be established. Return from the player to inspect its result.",
-                            )
-                        }
                         continue
                     }
-                    missingStatusCount = 0
+                    current.telemetryUnavailable = false
                     current.observedPositionMs = status.positionMs
                     current.client.timeline(media, status.state, status.positionMs, current.id)
                     current.liveReported = true
@@ -165,12 +160,20 @@ class PlaybackService : Service() {
                 } else {
                     current.client.timeline(current.media, "stopped", position, current.id)
                     PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
-                        phase = if (current.liveFailure != null) "Stopped; live reporting failed" else "Reported stopped to Plex",
+                        phase = when {
+                            current.liveFailure != null -> "Stopped; live reporting failed"
+                            !current.liveReported -> "Stopped; live telemetry unavailable"
+                            current.telemetryUnavailable -> "Stopped; last live telemetry unavailable"
+                            else -> "Reported stopped to Plex"
+                        },
                         positionMs = position,
-                        detail = current.liveFailure ?: if (!current.liveReported) {
-                            "The player returned a position, but no live telemetry was received before it returned."
-                        } else {
-                            "Final position sent. Check Plex resume position and the end of the active session."
+                        detail = current.liveFailure ?: when {
+                            !current.liveReported ->
+                                "Final position sent, but matching live telemetry was unavailable before the player returned."
+                            current.telemetryUnavailable ->
+                                "Final position sent from the player result or last verified position; " +
+                                    "live telemetry was unavailable when the player returned."
+                            else -> "Final position sent. Check Plex resume position and the end of the active session."
                         },
                     )
                 }
