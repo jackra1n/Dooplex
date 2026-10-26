@@ -41,7 +41,6 @@ internal object Analytics {
     private val main = Handler(Looper.getMainLooper())
     private val flags = mutableStateMapOf<String, String>()
     private var flagText = ""
-    var onFlagsChanged: (() -> Unit)? = null
     var onCommand: ((String) -> Unit)? = null
 
     /** A development switch set from the PC (analytics/flags), so experiments need no reinstall. */
@@ -225,7 +224,6 @@ internal object Analytics {
         main.post {
             flags.clear()
             flags.putAll(parsed)
-            onFlagsChanged?.invoke()
         }
     }
 

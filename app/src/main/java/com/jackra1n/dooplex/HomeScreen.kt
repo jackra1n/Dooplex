@@ -331,21 +331,7 @@ internal fun HomeScreen(
 private fun HeroArt(item: PlexBrowseItem?, posters: PosterRepository, modifier: Modifier) {
     Crossfade(targetState = item, animationSpec = tween(500), modifier = modifier, label = "hero art") { hero ->
         val painter = rememberMovieArtworkPainter(hero?.artPath, posters, width = 1280, height = 720, active = true)
-        if (painter != null && !Analytics.flag("heromask")) Box(
-            Modifier.fillMaxSize().drawWithCache {
-                val side = Brush.horizontalGradient(
-                    0f to Color.Black.copy(alpha = 0.72f), 0.42f to Color.Black.copy(alpha = 0.4f), 0.75f to Color.Transparent,
-                )
-                val fade = Brush.verticalGradient(0.5f to Color.Transparent, 0.98f to CinemaColors.Canvas)
-                onDrawWithContent {
-                    drawContent()
-                    drawRect(side)
-                    drawRect(fade)
-                }
-            },
-        ) {
-            Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        } else if (painter != null) Box(
+        if (painter != null) Box(
             Modifier.fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithCache {

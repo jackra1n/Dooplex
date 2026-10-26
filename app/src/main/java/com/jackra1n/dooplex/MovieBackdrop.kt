@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -32,7 +31,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.layout.onSizeChanged
-import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlin.math.roundToInt
 import java.io.IOException
 import kotlin.math.abs
@@ -41,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 @Immutable
 internal data class MovieAtmosphere(val left: Color, val right: Color, val lower: Color) {
@@ -106,10 +105,6 @@ internal fun MovieBackdrop(
         currentImage = over
         fade.snapTo(0f)
         fade.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
-    }
-    if (!Analytics.flag("wash")) {
-        Box(modifier.background(CinemaColors.Canvas))
-        return
     }
     Box(modifier.onSizeChanged { screen = it }) {
         // Both washes are opaque, so the old one stays whole underneath while the new one fades in.

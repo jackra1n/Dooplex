@@ -72,7 +72,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Analytics.start(this)
-        Analytics.onFlagsChanged = { posterRepository?.clearMemory() }
         Analytics.onCommand = ::runCommand
         // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
         window.setBackgroundDrawable(null)
