@@ -12,6 +12,10 @@ data class PlexServer(
     val connections: List<PlexServerEndpoint>,
 )
 data class PlexLibrary(val key: String, val title: String, val type: String)
+/**
+ * Optional artwork uses validated local Plex metadata paths; missing text and credits stay empty.
+ * Genre, director and cast names are deduplicated Plex tags in server order.
+ */
 data class PlexBrowseItem(
     val ratingKey: String,
     val title: String,
@@ -25,6 +29,11 @@ data class PlexBrowseItem(
     val rating: Double? = null,
     val contentRating: String = "",
     val videoResolution: String = "",
+    val artPath: String? = null,
+    val tagline: String = "",
+    val genres: List<String> = emptyList(),
+    val directors: List<String> = emptyList(),
+    val cast: List<String> = emptyList(),
 )
 data class PlexBrowsePage(val items: List<PlexBrowseItem>, val start: Int, val total: Int) {
     val hasNext: Boolean get() = items.isNotEmpty() && start + items.size < total

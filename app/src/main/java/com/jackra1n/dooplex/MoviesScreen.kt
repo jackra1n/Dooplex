@@ -1,6 +1,5 @@
 package com.jackra1n.dooplex
 
-import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,7 +11,6 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -72,16 +70,13 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -333,7 +328,7 @@ fun MoviesScreen(
         directionalFocus = false
     }
 
-    BackHandler(enabled = !playbackRunning) {
+    BackHandler(enabled = !playbackRunning && selected == null) {
         when {
             sortOpen -> {
                 sortOpen = false
@@ -341,7 +336,6 @@ fun MoviesScreen(
                 needsFocus = true
                 restoreEpoch++
             }
-            selected != null -> closeDetails()
             railHasFocus -> leaveAlphabet()
             else -> onBack()
         }
@@ -350,7 +344,8 @@ fun MoviesScreen(
     BoxWithConstraints(
         Modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas, CinemaColors.Canvas)),
-        ).windowInsetsPadding(WindowInsets.safeDrawing),
+        ).windowInsetsPadding(WindowInsets.safeDrawing)
+            .then(if (selected != null) Modifier.clearAndSetSemantics { } else Modifier),
     ) {
         val compact = maxWidth < 700.dp
         val edge = if (compact) 24.dp else 40.dp
@@ -641,7 +636,7 @@ fun MoviesScreen(
         )
     }
     if (selected != null) {
-        MovieDetailsDialog(
+        MovieDetailsScreen(
             movie = selected,
             posters = posters,
             loading = state.detailsLoading,
@@ -890,13 +885,6 @@ private fun MovieLetterButton(
     }
 }
 
-private fun artworkBucket(pixels: Float): Int = when {
-    pixels <= 192 -> 192
-    pixels <= 256 -> 256
-    pixels <= 384 -> 384
-    else -> 512
-}
-
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ControlText(text: String) {
@@ -1000,49 +988,6 @@ private fun MoviePosterCard(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun PosterArtwork(
-    path: String?,
-    posters: PosterRepository,
-    width: Int,
-    load: Boolean,
-    modifier: Modifier,
-    title: String,
-    metadataLoading: Boolean = false,
-) {
-    val height = width * 3 / 2
-    val cached = remember(posters, path, width) { path?.let { posters.cached(it, width, height) } }
-    var bitmap by remember(posters, path, width) { mutableStateOf<Bitmap?>(cached) }
-    LaunchedEffect(posters, path, width, load) {
-        if (path == null) return@LaunchedEffect
-        posters.cached(path, width, height)?.let { bitmap = it }
-        // Retain already displayed images while scrolling; only cache misses wait for idle.
-        if (!load || bitmap != null) return@LaunchedEffect
-        try {
-            bitmap = posters.load(path, width, height)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: java.io.IOException) {
-            // Keep a stable, readable artwork fallback; a later viewport visit can retry.
-        }
-    }
-    val painter = remember(bitmap) { bitmap?.let { BitmapPainter(it.asImageBitmap()) } }
-    if (painter != null) {
-        Image(painter, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
-    } else {
-        Box(modifier.background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas))),
-            contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
-                Text(title.take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.45f),
-                    fontSize = 44.sp, fontWeight = FontWeight.Light)
-                if (path == null && !metadataLoading) Text("NO ARTWORK", color = CinemaColors.Muted, fontSize = 10.sp,
-                    letterSpacing = 1.sp, maxLines = 1)
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
 private fun MovieSortDialog(current: MovieSort, onDismiss: () -> Unit, onChoose: (MovieSort) -> Unit) {
     val initial = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -1075,95 +1020,3 @@ private fun MovieSortDialog(current: MovieSort, onDismiss: () -> Unit, onChoose:
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun MovieDetailsDialog(
-    movie: PlexBrowseItem,
-    posters: PosterRepository,
-    loading: Boolean,
-    error: String?,
-    enabled: Boolean,
-    onDismiss: () -> Unit,
-    onRetry: () -> Unit,
-    onPlay: (Boolean) -> Unit,
-) {
-    val playFocus = remember(movie.ratingKey) { FocusRequester() }
-    Dialog(onDismissRequest = { if (enabled) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-            val wide = maxWidth >= 650.dp
-            val posterWidth = if (wide) 210.dp else 120.dp
-            val bucket = artworkBucket(with(LocalDensity.current) { posterWidth.toPx() })
-            Column(Modifier.widthIn(max = 980.dp).fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background(Brush.verticalGradient(listOf(CinemaColors.Panel.copy(alpha = 0.98f), CinemaColors.Canvas.copy(alpha = 0.98f))))
-                .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.075f), RoundedCornerShape(32.dp))
-                .verticalScroll(rememberScrollState()).padding(if (wide) 32.dp else 22.dp),
-                verticalArrangement = Arrangement.spacedBy(22.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(if (wide) 30.dp else 20.dp)) {
-                    PosterArtwork(movie.thumbPath, posters, bucket, enabled,
-                        Modifier.width(posterWidth).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)), movie.title)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("YOUR COLLECTION", color = CinemaColors.Accent, fontSize = 12.sp, letterSpacing = 2.sp)
-                        Text(movie.title, color = CinemaColors.Foreground, fontSize = if (wide) 34.sp else 25.sp,
-                            fontWeight = FontWeight.SemiBold)
-                        val metadata = listOfNotNull(
-                            movie.subtitle.takeIf { it.isNotBlank() },
-                            movie.durationMs.takeIf { it > 0 }?.let { movieRuntime(it) },
-                            movie.contentRating.takeIf { it.isNotBlank() },
-                            movie.videoResolution.takeIf { it.isNotBlank() }?.let { "${it.uppercase()} video" },
-                            movie.rating?.let { "Rating $it" },
-                        ).joinToString("  ·  ")
-                        if (metadata.isNotBlank()) Text(metadata, color = CinemaColors.Muted, fontSize = 16.sp)
-                        if (movie.watched) Text("Watched", color = CinemaColors.Accent, fontSize = 15.sp)
-                        if (loading) Text("Refreshing movie details…", color = CinemaColors.Muted, fontSize = 15.sp)
-                        Text(movie.summary.ifBlank { if (loading) "Loading synopsis…" else "No synopsis supplied by Plex." },
-                            color = CinemaColors.Foreground.copy(alpha = 0.9f), fontSize = 18.sp, lineHeight = 27.sp)
-                    }
-                }
-                if (error != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ErrorNote(error, Modifier.weight(1f))
-                        CinemaButton(onClick = onRetry, enabled = enabled) { ControlText("Retry details") }
-                    }
-                }
-                val resume = movie.viewOffsetMs > 0
-                if (wide) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CinemaButton(onClick = { onPlay(false) }, modifier = Modifier.focusRequester(playFocus),
-                            selected = true, enabled = enabled) {
-                            ControlText(if (resume) "Resume · ${movieRuntime(movie.viewOffsetMs)}" else "Play original")
-                        }
-                        if (resume) CinemaButton(onClick = { onPlay(true) }, enabled = enabled) { ControlText("Start over") }
-                        Spacer(Modifier.weight(1f))
-                        CinemaButton(onClick = onDismiss, enabled = enabled) { ControlText("Close") }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CinemaButton(onClick = { onPlay(false) },
-                            modifier = Modifier.fillMaxWidth().focusRequester(playFocus), selected = true, enabled = enabled) {
-                            ControlText(if (resume) "Resume · ${movieRuntime(movie.viewOffsetMs)}" else "Play original")
-                        }
-                        if (resume) CinemaButton(onClick = { onPlay(true) }, modifier = Modifier.fillMaxWidth(), enabled = enabled) {
-                            ControlText("Start over")
-                        }
-                        CinemaButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), enabled = enabled) { ControlText("Close") }
-                    }
-                }
-                Text("Original quality · Direct playback", color = CinemaColors.Muted, fontSize = 13.sp)
-            }
-        }
-        LaunchedEffect(movie.ratingKey, enabled) {
-            if (enabled) {
-                withFrameNanos { }
-                playFocus.requestFocus()
-            }
-        }
-    }
-}
-
-private fun movieRuntime(milliseconds: Long): String {
-    val minutes = milliseconds / 60_000
-    val hours = minutes / 60
-    return if (hours > 0) "${hours}h ${minutes % 60}m" else "${minutes}m"
-}

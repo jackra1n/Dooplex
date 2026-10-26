@@ -72,14 +72,14 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
     private var diskPrepared = false // guarded by diskLock across repository instances
 
     /** A cheap, memory-only lookup; no URL construction, SHA, filesystem access or decoding. */
-    fun cached(thumbPath: String, width: Int, height: Int): Bitmap? = synchronized(lock) {
-        if (closed) null else memory[Key(thumbPath, width, height)]?.bitmap
+    fun cached(artworkPath: String, width: Int, height: Int): Bitmap? = synchronized(lock) {
+        if (closed) null else memory[Key(artworkPath, width, height)]?.bitmap
     }
 
     /** Published atomically with its bitmap and evicted with the same bounded memory entry. */
-    internal fun cachedAtmosphere(thumbPath: String, width: Int, height: Int): MovieAtmosphere? =
+    internal fun cachedAtmosphere(artworkPath: String, width: Int, height: Int): MovieAtmosphere? =
         synchronized(lock) {
-            if (closed) null else memory[Key(thumbPath, width, height)]?.atmosphere
+            if (closed) null else memory[Key(artworkPath, width, height)]?.atmosphere
         }
 
     /** Lookahead yields to foreground requests before starting its next speculative image. */
@@ -87,12 +87,12 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         idle.first { it }
     }
 
-    suspend fun load(thumbPath: String, width: Int, height: Int): Bitmap {
+    suspend fun load(artworkPath: String, width: Int, height: Int): Bitmap {
         currentCoroutineContext().ensureActive()
         if (width !in 1..MAX_DIMENSION || height !in 1..MAX_DIMENSION) {
             throw ArtworkException("Choose valid artwork dimensions.")
         }
-        val key = Key(thumbPath, width, height)
+        val key = Key(artworkPath, width, height)
         val request = synchronized(lock) {
             if (closed) throw ArtworkException("The artwork repository is closed.")
             memory[key]?.let { return it.bitmap }
@@ -166,7 +166,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
                     return@withPermit bitmap
                 }
             }
-            val url = client.posterUrl(key.thumbPath, key.width, key.height)
+            val url = client.artworkUrl(key.artworkPath, key.width, key.height)
             val image = download(url)
             val bitmap = decode(image, key)
             writeDisk(name, image)
@@ -334,7 +334,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
     private fun diskName(key: Key): String {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(diskScope)
-        for (value in listOf(key.thumbPath, key.width.toString(), key.height.toString())) {
+        for (value in listOf(key.artworkPath, key.width.toString(), key.height.toString())) {
             digest.update(value.toByteArray(Charsets.UTF_8))
             digest.update(0.toByte())
         }
@@ -450,7 +450,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         return false
     }
 
-    private data class Key(val thumbPath: String, val width: Int, val height: Int)
+    private data class Key(val artworkPath: String, val width: Int, val height: Int)
     private data class MemoryEntry(val bitmap: Bitmap, val bytes: Long, val atmosphere: MovieAtmosphere)
     private class Request(val result: Deferred<Bitmap>, var consumers: Int = 0)
     private data class DiskEntry(val file: File, val bytes: Long, val modified: Long)

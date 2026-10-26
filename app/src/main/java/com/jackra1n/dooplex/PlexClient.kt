@@ -146,15 +146,17 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
-    fun posterUrl(thumbPath: String, width: Int, height: Int): String {
-        require(THUMB_PATH.matches(thumbPath)) { "A safe Plex movie thumbnail path is required." }
-        require(width in 1..MAX_POSTER_DIMENSION && height in 1..MAX_POSTER_DIMENSION) {
-            "Plex poster dimensions must be between 1 and 2048 pixels."
+    fun artworkUrl(artworkPath: String, width: Int, height: Int): String {
+        require(THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)) {
+            "A safe Plex movie artwork path is required."
+        }
+        require(width in 1..MAX_ARTWORK_DIMENSION && height in 1..MAX_ARTWORK_DIMENSION) {
+            "Plex artwork dimensions must be between 1 and 2048 pixels."
         }
         return url(
             "/photo/:/transcode",
             linkedMapOf(
-                "url" to thumbPath,
+                "url" to artworkPath,
                 "width" to width.toString(),
                 "height" to height.toString(),
                 "minSize" to "1",
@@ -224,7 +226,22 @@ class PlexClient(private val connection: PlexConnection) {
             rating = item.optDouble("rating").takeIf { it.isFinite() },
             contentRating = item.optString("contentRating"),
             videoResolution = media?.optString("videoResolution").orEmpty(),
+            artPath = (item.opt("art") as? String)?.takeIf { ART_PATH.matches(it) },
+            tagline = (item.opt("tagline") as? String).orEmpty(),
+            genres = item.tagNames("Genre"),
+            directors = item.tagNames("Director"),
+            cast = item.tagNames("Role"),
         )
+    }
+
+    private fun JSONObject.tagNames(name: String): List<String> {
+        val tags = optJSONArray(name) ?: return emptyList()
+        val names = LinkedHashSet<String>()
+        for (index in 0 until tags.length()) {
+            val tag = (tags.optJSONObject(index)?.opt("tag") as? String)?.trim()
+            if (!tag.isNullOrEmpty()) names.add(tag)
+        }
+        return names.toList()
     }
 
     suspend fun loadMedia(ratingKey: String): PlaybackMedia = withContext(Dispatchers.IO) {
@@ -416,10 +433,11 @@ class PlexClient(private val connection: PlexConnection) {
     private companion object {
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
         const val MAX_PAGE_SIZE = 200
-        const val MAX_POSTER_DIMENSION = 2048
+        const val MAX_ARTWORK_DIMENSION = 2048
         val RATING_KEY = Regex("[0-9]+")
         val PART_KEY = Regex("/library/parts/[0-9]+/[0-9]+/file(?:\\.[A-Za-z0-9_-]+)?")
         val THUMB_PATH = Regex("/library/metadata/[0-9]+/thumb(?:/[0-9]+)?")
+        val ART_PATH = Regex("/library/metadata/[0-9]+/art(?:/[0-9]+)?")
         val BROWSE_TYPES = setOf("movie", "show", "season", "episode")
         val PLAYBACK_STATES = setOf("buffering", "playing", "paused", "stopped")
 
