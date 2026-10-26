@@ -15,6 +15,8 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        val crashReportUrl = providers.environmentVariable("DOOPLEX_CRASH_URL").getOrElse("")
+        buildConfigField("String", "CRASH_REPORT_URL", "\"$crashReportUrl\"")
 
     }
 
@@ -32,6 +34,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
