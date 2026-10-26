@@ -269,7 +269,61 @@ class PlexClient(private val connection: PlexConnection) {
             ratings = PlexSourceMetadata.ratings(item),
             videoFormat = original?.let { PlexSourceMetadata.videoFormat(it.media, it.part) }.orEmpty(),
             audioFormat = original?.let { PlexSourceMetadata.audioFormat(it.media, it.part) }.orEmpty(),
+            type = type,
+            libraryKey = item.optString("librarySectionID").takeIf { RATING_KEY.matches(it) },
         )
+    }
+
+    /**
+     * The dedicated Continue Watching hub, then the server's other Home hubs. The dedicated hub is the
+     * one that honours "remove from Continue Watching"; `/hubs` drops its own copy with
+     * `excludeContinueWatching` (plx-native's measured behaviour). Hub items arrive embedded.
+     */
+    suspend fun homeRows(): List<PlexHomeRow> = withContext(Dispatchers.IO) {
+        hubRows("/hubs/continueWatching", mapOf("count" to HOME_ROW_ITEMS), "continue watching") +
+            hubRows("/hubs", mapOf("count" to HOME_ROW_ITEMS, "excludeContinueWatching" to "1"), "home")
+    }
+
+    private suspend fun hubRows(path: String, parameters: Map<String, String>, operation: String): List<PlexHomeRow> = try {
+        val hubs = JSONObject(request(path, parameters, operation = operation))
+            .getJSONObject("MediaContainer").optJSONArray("Hub")
+        buildList {
+            if (hubs != null) for (index in 0 until hubs.length()) {
+                val hub = hubs.optJSONObject(index) ?: continue
+                val metadata = hub.optJSONArray("Metadata") ?: continue
+                val items = (0 until metadata.length()).mapNotNull { metadata.optJSONObject(it)?.let { item -> homeItem(item) } }
+                if (items.isNotEmpty()) add(PlexHomeRow(
+                    key = hub.optString("hubIdentifier").ifBlank { "$path#$index" },
+                    title = hub.optString("title").ifBlank { "Recommended" },
+                    items = items.distinctBy { it.ratingKey },
+                ))
+            }
+        }
+    } catch (_: JSONException) {
+        throw IOException("Plex returned invalid Home information.")
+    }
+
+    /** Shelves show an episode or season as its show's poster, with the episode as the second line. */
+    private suspend fun homeItem(source: JSONObject): PlexBrowseItem? {
+        val item = parseBrowseItem(source) ?: return null
+        val show = source.optString("grandparentTitle").ifBlank { source.optString("parentTitle") }
+        val showPoster = sequenceOf("grandparentThumb", "parentThumb").map { source.optString(it) }
+            .firstOrNull { THUMB_PATH.matches(it) }
+        return when (item.type) {
+            "episode" -> item.copy(
+                title = show.ifBlank { item.title },
+                subtitle = listOf("S${source.optInt("parentIndex")} · E${source.optInt("index")}", item.title)
+                    .filter { it.isNotBlank() }.joinToString(" · "),
+                thumbPath = showPoster ?: item.thumbPath,
+                artPath = (source.opt("grandparentArt") as? String)?.takeIf { ART_PATH.matches(it) } ?: item.artPath,
+            )
+            "season" -> item.copy(
+                title = show.ifBlank { item.title },
+                subtitle = item.title,
+                thumbPath = item.thumbPath ?: showPoster,
+            )
+            else -> item
+        }
     }
 
     private fun JSONObject.tagNames(name: String): List<String> {
@@ -501,6 +555,7 @@ class PlexClient(private val connection: PlexConnection) {
         val THUMB_PATH = Regex("/library/metadata/[0-9]+/thumb(?:/[0-9]+)?")
         val ART_PATH = Regex("/library/metadata/[0-9]+/art(?:/[0-9]+)?")
         val BROWSE_TYPES = setOf("movie", "show", "season", "episode")
+        const val HOME_ROW_ITEMS = "24"
         val PLAYBACK_STATES = setOf("buffering", "playing", "paused", "stopped")
 
         fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

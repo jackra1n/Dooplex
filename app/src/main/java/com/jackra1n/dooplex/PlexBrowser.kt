@@ -40,7 +40,12 @@ data class PlexBrowseItem(
     val ratings: List<PlexMediaRating> = emptyList(),
     val videoFormat: String = "",
     val audioFormat: String = "",
+    val type: String = "",
+    val libraryKey: String? = null,
 )
+
+/** One server-arranged Home shelf, Continue Watching first; empty shelves are never kept. */
+data class PlexHomeRow(val key: String, val title: String, val items: List<PlexBrowseItem>)
 
 /** Explicit Plex rating badge identity; a generic title rating does not establish its source. */
 data class PlexMediaRating(val source: String, val type: String, val value: Double)
