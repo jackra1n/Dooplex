@@ -44,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -401,9 +402,13 @@ internal fun CollectionScreen(
         val emptyHeight = (maxHeight - 180.dp).coerceAtLeast(260.dp)
         val controlsEnabled = !playbackRunning && !modalOpen
         val lastIndex = (if (state.total > 0) state.total else 12) - 1
-        val atRightEdge = focusedIndex % columns == columns - 1 || focusedIndex == lastIndex
-        val showAlphabet = controlsEnabled &&
-            (railHasFocus || railRestorePending || awaitingJump || gridHasFocus && atRightEdge)
+        // Derived so a focus move only recomposes this screen when the rail actually appears or hides.
+        val showAlphabet by remember(columns, lastIndex, controlsEnabled) {
+            derivedStateOf {
+                val atRightEdge = focusedIndex % columns == columns - 1 || focusedIndex == lastIndex
+                controlsEnabled && (railHasFocus || railRestorePending || awaitingJump || gridHasFocus && atRightEdge)
+            }
+        }
         val railOpacity = animateFloatAsState(if (showAlphabet) 1f else 0f, tween(150), label = "alphabet reveal")
 
         fun enterAlphabet() {
@@ -424,7 +429,7 @@ internal fun CollectionScreen(
         }
 
         MovieBackdrop(
-            movie = state.itemAt(focusedIndex),
+            movie = { state.itemAt(focusedIndex) },
             posters = posters,
             artworkWidth = artworkWidth,
             active = !playbackRunning,
@@ -560,6 +565,7 @@ internal fun CollectionScreen(
                         ) { index ->
                             val item = if (state.total > 0) state.itemAt(index) else null
                             val requester = remember(state.generation, index) { FocusRequester() }
+                            val inArtworkRange by remember(state.generation, index) { derivedStateOf { index in artworkRange } }
                             DisposableEffect(requester) {
                                 requesters[index] = requester
                                 onDispose { requesters.remove(index) }
@@ -568,7 +574,7 @@ internal fun CollectionScreen(
                                 item = item,
                                 posters = posters,
                                 artworkWidth = artworkWidth,
-                                loadArtwork = !playbackRunning && index in artworkRange,
+                                loadArtwork = !playbackRunning && inArtworkRange,
                                 enabled = controlsEnabled,
                                 modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
                                     val count = if (state.total > 0) state.total else 12

@@ -40,16 +40,19 @@ private fun MovieAtmosphere.blend(other: MovieAtmosphere, fraction: Float) = Mov
     lerp(left, other.left, fraction), lerp(right, other.right, fraction), lerp(lower, other.lower, fraction),
 )
 
-/** Cached palettes start blending immediately; cold artwork retains the last wash until ready. */
+/**
+ * Cached palettes start blending immediately; cold artwork retains the last wash until ready.
+ * The focused movie is read here, not by the caller, so a focus move recomposes only the wash.
+ */
 @Composable
 internal fun MovieBackdrop(
-    movie: PlexBrowseItem?,
+    movie: () -> PlexBrowseItem?,
     posters: PosterRepository,
     artworkWidth: Int,
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val path = movie?.thumbPath
+    val path = movie()?.thumbPath
     val artworkHeight = artworkWidth * 3 / 2
     var loaded by remember(posters, path, artworkWidth) { mutableStateOf<MovieAtmosphere?>(null) }
     val cached = path?.let { posters.cachedAtmosphere(it, artworkWidth, artworkHeight) }

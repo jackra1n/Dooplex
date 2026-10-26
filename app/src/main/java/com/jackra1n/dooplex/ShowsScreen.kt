@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -401,6 +402,7 @@ internal fun ShowsScreen(
                     items(count = count, key = { it }, contentType = { if (episodes) "episode" else "portrait" }) { index ->
                         val item = state.itemAt(index)
                         val requester = remember(state, index) { FocusRequester() }
+                        val inArtworkRange by remember(state, index) { derivedStateOf { index in artworkRange } }
                         DisposableEffect(requester) {
                             requesters[index] = requester
                             onDispose { requesters.remove(index) }
@@ -436,9 +438,9 @@ internal fun ShowsScreen(
                             if (item?.childrenPath != null) needsFocus = true
                             if (item != null) onItem(item) else if (state.error != null) state.retry() else state.requestRange(index, index)
                         }
-                        if (episodes) EpisodeCard(item, posters, artworkWidth, enabled && index in artworkRange,
+                        if (episodes) EpisodeCard(item, posters, artworkWidth, enabled && inArtworkRange,
                             enabled, cardModifier, onFocus, onClick, "Episode ${index + 1}")
-                        else CollectionPosterCard(item, posters, artworkWidth, enabled && index in artworkRange,
+                        else CollectionPosterCard(item, posters, artworkWidth, enabled && inArtworkRange,
                             enabled, cardModifier, onFocus, onClick, "${noun.replaceFirstChar { it.uppercase() }} ${index + 1}")
                     }
                 }
