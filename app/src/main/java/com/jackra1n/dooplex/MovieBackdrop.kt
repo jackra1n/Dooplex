@@ -112,8 +112,10 @@ private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
             (size.width / WASH_SCALE).toInt().coerceAtLeast(1),
             (size.height / WASH_SCALE).toInt().coerceAtLeast(1),
         )
-        CanvasDrawScope().draw(Density(1f), layoutDirection, Canvas(image), Size(image.width.toFloat(), image.height.toFloat())) {
-            drawWash(colors)
+        Analytics.timed("wash.render.ms") {
+            CanvasDrawScope().draw(Density(1f), layoutDirection, Canvas(image), Size(image.width.toFloat(), image.height.toFloat())) {
+                drawWash(colors)
+            }
         }
         val screen = IntSize(size.width.roundToInt(), size.height.roundToInt())
         onDrawBehind { drawImage(image, dstSize = screen, filterQuality = FilterQuality.Low) }

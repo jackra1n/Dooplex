@@ -137,6 +137,7 @@ internal fun HomeScreen(
                     // A missing picture falls back to the title text and the page wash.
                 }
             }
+        Analytics.mark("hero:swap")
         shown = details
     }
     LaunchedEffect(heroIndex, heroes.size, enabled) {

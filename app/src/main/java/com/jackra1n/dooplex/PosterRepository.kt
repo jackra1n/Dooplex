@@ -86,7 +86,10 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         val key = Key(artworkPath, width, height)
         val request = synchronized(lock) {
             if (closed) throw ArtworkException("The artwork repository is closed.")
-            memory[key]?.let { return it.bitmap }
+            memory[key]?.let {
+                Analytics.sample("poster.memory", 1.0)
+                return it.bitmap
+            }
             val request = requests[key] ?: Request(key).also {
                 requests[key] = it
                 idle.value = false
@@ -160,6 +163,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         val key = request.key
         val context = currentCoroutineContext()
         val name = diskName(key)
+        val started = System.nanoTime()
         disk.read(name, context)?.let { image ->
             val bitmap = try {
                 decode(image, key)
@@ -169,11 +173,13 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
             }
             if (bitmap != null) {
                 request.result.complete(publish(key, bitmap))
+                Analytics.sample("poster.disk.ms", (System.nanoTime() - started) / 1e6)
                 return
             }
         }
         val image = download(client.artworkUrl(key.artworkPath, key.width, key.height), context)
         request.result.complete(publish(key, decode(image, key)))
+        Analytics.sample("poster.network.ms", (System.nanoTime() - started) / 1e6)
         disk.write(name, image, context)
     }
 

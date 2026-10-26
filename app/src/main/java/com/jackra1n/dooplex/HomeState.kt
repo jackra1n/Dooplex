@@ -49,7 +49,7 @@ class HomeState(val connection: PlexConnection, parentScope: CoroutineScope) {
         loadJob?.cancel()
         loadJob = scope.launch {
             try {
-                val loaded = client.homeRows()
+                val loaded = Analytics.timed("home.load.ms") { client.homeRows() }
                 rows = loaded
                 heroes = heroPool(loaded).map { detailed[it.ratingKey] ?: it }
                 error = null
