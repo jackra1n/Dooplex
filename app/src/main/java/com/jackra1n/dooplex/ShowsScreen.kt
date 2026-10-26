@@ -473,7 +473,7 @@ private fun EpisodeCard(
     val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "episode focus")
     val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "episode highlight")
     val painter = rememberMovieArtworkPainter(item?.thumbPath, posters, artworkWidth, artworkWidth * 9 / 16, loadArtwork)
-    val instant = remember(item?.thumbPath, artworkWidth) { painter != null }
+    val reveal = rememberArtworkReveal(item?.thumbPath, artworkWidth, painter != null)
     val status = remember(item) {
         if (item == null) " " else buildList {
             if (item.durationMs > 0) add("${(item.durationMs / 60000).coerceAtLeast(1)} min")
@@ -501,11 +501,13 @@ private fun EpisodeCard(
                 val corner = CornerRadius(9.dp.toPx())
                 onDrawWithContent {
                     drawContent()
-                    drawRect(shine, alpha = light.value)
-                    drawRoundRect(CinemaColors.Foreground, cornerRadius = corner, alpha = light.value * 0.65f, style = stroke)
+                    if (light.value > 0f) {
+                        drawRect(shine, alpha = light.value)
+                        drawRoundRect(CinemaColors.Foreground, cornerRadius = corner, alpha = light.value * 0.65f, style = stroke)
+                    }
                 }
             }, contentAlignment = Alignment.Center) {
-            if (painter != null) ArtworkImage(painter, fadeIn = !instant, Modifier.fillMaxSize())
+            if (painter != null) ArtworkImage(painter, reveal, Modifier.fillMaxSize())
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(12.dp)) {
                 Text((item?.title ?: placeholderLabel).take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.5f), fontSize = 32.sp)
                 if (item != null && item.thumbPath == null) Text("NO ARTWORK", color = CinemaColors.Muted, fontSize = 10.sp, letterSpacing = 1.sp)

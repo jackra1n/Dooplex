@@ -2,9 +2,9 @@ package com.jackra1n.dooplex
 
 import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,11 +83,11 @@ internal fun PosterArtwork(
     metadataLoading: Boolean = false,
 ) {
     val painter = rememberMovieArtworkPainter(path, posters, width, width * 3 / 2, load)
-    val instant = remember(path, width) { painter != null }
-    Box(modifier.background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas))),
-        contentAlignment = Alignment.Center) {
+    val reveal = rememberArtworkReveal(path, width, painter != null)
+    // The placeholder is only painted until the poster above it is fully opaque.
+    Box(modifier.drawBehind { if (reveal.value < 1f) drawRect(PlaceholderBrush) }, contentAlignment = Alignment.Center) {
         if (painter != null) {
-            ArtworkImage(painter, fadeIn = !instant, Modifier.fillMaxSize())
+            ArtworkImage(painter, reveal, Modifier.fillMaxSize())
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
                 Text(title.take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.45f),
@@ -98,14 +99,21 @@ internal fun PosterArtwork(
     }
 }
 
-/** Artwork that arrives after its card appeared fades in; cache hits draw immediately. */
+private val PlaceholderBrush = Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas))
+
+/** Artwork that arrives after its card appeared fades in; cache hits start fully shown. */
 @Composable
-internal fun ArtworkImage(painter: Painter, fadeIn: Boolean, modifier: Modifier) {
-    val alpha = remember { Animatable(if (fadeIn) 0f else 1f) }
-    LaunchedEffect(alpha) { alpha.animateTo(1f, tween(220)) }
+internal fun rememberArtworkReveal(path: String?, width: Int, ready: Boolean): Animatable<Float, AnimationVector1D> {
+    val reveal = remember(path, width) { Animatable(if (ready) 1f else 0f) }
+    LaunchedEffect(reveal, ready) { if (ready) reveal.animateTo(1f, tween(220)) }
+    return reveal
+}
+
+@Composable
+internal fun ArtworkImage(painter: Painter, reveal: Animatable<Float, AnimationVector1D>, modifier: Modifier) {
     Image(painter, contentDescription = null, contentScale = ContentScale.Crop,
         modifier = modifier.graphicsLayer {
-            this.alpha = alpha.value
+            alpha = reveal.value
             compositingStrategy = CompositingStrategy.ModulateAlpha
         })
 }

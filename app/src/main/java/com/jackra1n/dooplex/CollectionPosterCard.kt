@@ -98,9 +98,11 @@ internal fun CollectionPosterCard(
                 val corner = CornerRadius((9.dp.toPx() - inset).coerceAtLeast(0f))
                 onDrawWithContent {
                     drawContent()
-                    drawRect(highlight, alpha = light.value)
-                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value * 0.14f, style = halo)
-                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value, style = edge)
+                    if (light.value > 0f) {
+                        drawRect(highlight, alpha = light.value)
+                        drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value * 0.14f, style = halo)
+                        drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value, style = edge)
+                    }
                 }
             }) {
             PosterArtwork(item?.thumbPath, posters, artworkWidth, loadArtwork,

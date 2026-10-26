@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         FrameReporter.install(this)
+        // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
+        window.setBackgroundDrawable(null)
         store = PlexAccountStore(this)
         navigationStore = PlexNavigationStore(this)
         accountClient = PlexAccountClient(store.clientId)
