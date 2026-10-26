@@ -28,10 +28,11 @@ internal fun WhenVisible(content: @Composable (visible: Boolean) -> Unit) = cont
  * Keeps a visited screen composed while another one shows. A hidden screen stays placed on its own
  * layer far above the window: the GPU skips it, its recorded drawing survives, and showing it again
  * only moves that layer instead of rebuilding and redrawing every card. Focus can't enter it while
- * hidden, and screens check [WhenVisible] before requesting focus.
+ * hidden, and screens check [WhenVisible] before requesting focus. While [warm], a hidden screen is
+ * drawn in place under an opaque cover, so its first real showing finds the GPU's caches ready.
  */
 @Composable
-internal fun KeptScreen(visible: Boolean, content: @Composable () -> Unit) {
+internal fun KeptScreen(visible: Boolean, warm: Boolean = false, content: @Composable () -> Unit) {
     val focusManager = LocalFocusManager.current
     val shown by rememberUpdatedState(visible)
     var hasFocus by remember { mutableStateOf(false) }
@@ -47,7 +48,7 @@ internal fun KeptScreen(visible: Boolean, content: @Composable () -> Unit) {
     ) { measurables, constraints ->
         val placeables = measurables.map { it.measure(constraints) }
         layout(constraints.maxWidth, constraints.maxHeight) {
-            val y = if (visible) 0 else -HIDDEN_OFFSET * constraints.maxHeight
+            val y = if (visible || warm) 0 else -HIDDEN_OFFSET * constraints.maxHeight
             placeables.forEach { it.placeWithLayer(0, y) }
         }
     }
