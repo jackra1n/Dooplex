@@ -74,7 +74,7 @@ internal fun MovieBackdrop(
         previous = previous.blend(current, fade.value)
         current = target
         fade.snapTo(0f)
-        fade.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+        fade.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
     }
     Box(modifier) {
         AtmosphericWash(previous, Modifier.fillMaxSize().graphicsLayer {
