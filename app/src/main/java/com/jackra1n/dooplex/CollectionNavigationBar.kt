@@ -54,12 +54,15 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
@@ -113,6 +116,7 @@ internal class CollectionFocusState {
  * One quiet collection track: the route marker persists independently of the bright focus pill.
  * Stable parent-owned requesters reattach when lazy headers scroll or destinations change.
  * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
+ * Labels set tab widths within per-tab/track caps; highlight position and width animate draw-only.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -144,15 +148,41 @@ internal fun CollectionNavigationBar(
         val compact = maxWidth < 720.dp
         val showPeripheral = maxWidth >= 480.dp
         val availableTrack = maxWidth * if (showPeripheral) 0.62f else 1f
-        val tabWidth = (if (compact) 156.dp else 220.dp).coerceAtMost(
+        val density = LocalDensity.current
+        val textMeasurer = rememberTextMeasurer()
+        val labelStyle = LocalTextStyle.current.copy(
+            fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Medium,
+        )
+        val maxTabWidth = 320.dp.coerceAtMost(
             ((availableTrack - 8.dp) / tabs.size.coerceAtLeast(1)).coerceAtLeast(0.dp),
         )
-        val tabWidthPx = with(LocalDensity.current) { tabWidth.toPx() }
+        val tabWidths = remember(tabs, textMeasurer, labelStyle, density, maxTabWidth) {
+            with(density) {
+                val padding = 24.dp.roundToPx()
+                val maximum = maxTabWidth.roundToPx()
+                FloatArray(tabs.size) { index ->
+                    (textMeasurer.measure(
+                        text = tabs[index].second, style = labelStyle,
+                        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                        constraints = Constraints(maxWidth = (maximum - padding).coerceAtLeast(0)),
+                    ).size.width + padding).coerceAtMost(maximum).toFloat()
+                }
+            }
+        }
+        val tabOffsets = remember(tabWidths) {
+            var offset = 0f
+            FloatArray(tabWidths.size) { index -> offset.also { offset += tabWidths[index] } }
+        }
         val activeIndex = tabs.indexOfFirst { it.first == activeType }
         val focusIndex = tabs.indexOfFirst { it.first == focusedType }
+        val targetIndex = focusIndex.takeIf { it >= 0 } ?: activeIndex.coerceAtLeast(0)
         val focusOffset = animateFloatAsState(
-            targetValue = (focusIndex.takeIf { it >= 0 } ?: activeIndex.coerceAtLeast(0)) * tabWidthPx,
+            targetValue = tabOffsets.getOrElse(targetIndex) { 0f },
             animationSpec = tween(130), label = "collection focus position",
+        )
+        val focusWidth = animateFloatAsState(
+            targetValue = tabWidths.getOrElse(targetIndex) { 0f },
+            animationSpec = tween(130), label = "collection focus width",
         )
         val showFocus = focusIndex >= 0
         Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -169,24 +199,24 @@ internal fun CollectionNavigationBar(
                         .border(0.5.dp, CinemaControlColors.Outline, shape)
                         .padding(4.dp)
                         .drawWithCache {
-                            val pillSize = Size(tabWidthPx, size.height)
                             val radius = CornerRadius(size.height / 2f)
                             onDrawBehind {
                                 if (activeIndex >= 0) drawRoundRect(
                                     CinemaControlColors.Active,
-                                    topLeft = Offset(activeIndex * tabWidthPx, 0f), size = pillSize,
+                                    topLeft = Offset(tabOffsets[activeIndex], 0f),
+                                    size = Size(tabWidths[activeIndex], size.height),
                                     cornerRadius = radius,
                                 )
                                 if (showFocus) drawRoundRect(
                                     CinemaControlColors.Focus, topLeft = Offset(focusOffset.value, 0f),
-                                    size = pillSize, cornerRadius = radius,
+                                    size = Size(focusWidth.value, size.height), cornerRadius = radius,
                                 )
                             }
                         }.focusGroup(),
                 ) {
                     tabs.forEachIndexed { index, (type, label) ->
                         Box(
-                            Modifier.width(tabWidth).height(46.dp)
+                            Modifier.width(with(density) { tabWidths[index].toDp() }).height(46.dp)
                                 .focusRequester(if (type == "movie") focus.movieTab else focus.showTab)
                                 .onPreviewKeyEvent { event ->
                                     when (event.key) {
@@ -227,18 +257,18 @@ internal fun CollectionNavigationBar(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(label, color = CinemaColors.Foreground,
-                                fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Medium,
+                                style = labelStyle,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                             // Invert only the glyphs actually under the moving light pill. Both the
                             // departing and arriving labels retain contrast throughout translation.
                             Text(label, color = CinemaColors.Canvas,
-                                fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Medium,
+                                style = labelStyle,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.clearAndSetSemantics {}.drawWithContent {
                                     if (showFocus) {
-                                        val left = focusOffset.value - index * tabWidthPx - (tabWidthPx - size.width) / 2f
+                                        val left = focusOffset.value - tabOffsets[index] - (tabWidths[index] - size.width) / 2f
                                         val clipLeft = left.coerceAtLeast(0f)
-                                        val clipRight = (left + tabWidthPx).coerceAtMost(size.width)
+                                        val clipRight = (left + focusWidth.value).coerceAtMost(size.width)
                                         if (clipRight > clipLeft) clipRect(left = clipLeft, right = clipRight) {
                                             this@drawWithContent.drawContent()
                                         }
