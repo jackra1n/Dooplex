@@ -91,7 +91,7 @@ fun PlexBrowserScreen(
 
     BackHandler(enabled = state.canGoBack && !playback.running, onBack = onBack)
 
-    AtmosphericWash(MovieAtmosphere.Welcome, Modifier.fillMaxSize())
+    CornerGround(CornerColors.Welcome, Modifier.fillMaxSize())
     Column(
         modifier = Modifier.fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)

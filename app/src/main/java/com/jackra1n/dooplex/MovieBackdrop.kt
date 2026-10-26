@@ -43,7 +43,6 @@ import kotlinx.coroutines.withContext
 internal data class MovieAtmosphere(val left: Color, val right: Color, val lower: Color) {
     companion object {
         val Neutral = MovieAtmosphere(Color.Transparent, Color.Transparent, Color.Transparent)
-        val Welcome = MovieAtmosphere(Color(0xFFC98A12), Color(0xFF2F5F93), Color(0xFF6A3F9A))
     }
 }
 
@@ -107,7 +106,7 @@ internal fun MovieBackdrop(
  * texture instead of the screen gradient plus four colour pools.
  */
 @Composable
-internal fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
+private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
     Box(modifier.drawWithCache {
         val image = ImageBitmap(
             (size.width / WASH_SCALE).toInt().coerceAtLeast(1),
