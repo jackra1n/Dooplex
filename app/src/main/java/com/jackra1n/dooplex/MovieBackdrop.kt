@@ -14,7 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.layout.onSizeChanged
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlin.math.roundToInt
 import java.io.IOException
@@ -81,46 +83,74 @@ internal fun MovieBackdrop(
     val target = if (path == null) MovieAtmosphere.Neutral else cached ?: loaded
     var previous by remember(posters) { mutableStateOf(MovieAtmosphere.Neutral) }
     var current by remember(posters) { mutableStateOf(cached ?: MovieAtmosphere.Neutral) }
+    var previousImage by remember(posters) { mutableStateOf<ImageBitmap?>(null) }
+    var currentImage by remember(posters) { mutableStateOf<ImageBitmap?>(null) }
+    var screen by remember { mutableStateOf(IntSize.Zero) }
     val fade = remember(posters) { Animatable(1f) }
-    LaunchedEffect(posters, target) {
-        if (target == null || target == current) return@LaunchedEffect
-        previous = previous.blend(current, fade.value)
-        current = target
+    LaunchedEffect(posters, target, screen) {
+        if (screen == IntSize.Zero) return@LaunchedEffect
+        val next = target ?: current
+        if (next == current && currentImage != null) return@LaunchedEffect
+        if (currentImage == null) {
+            currentImage = withContext(Dispatchers.Default) { washImage(next, screen) }
+            current = next
+            return@LaunchedEffect
+        }
+        val blended = previous.blend(current, fade.value)
+        val (under, over) = withContext(Dispatchers.Default) { washImage(blended, screen) to washImage(next, screen) }
+        previous = blended
+        current = next
+        previousImage = under
+        currentImage = over
         fade.snapTo(0f)
         fade.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
     }
-    Box(modifier) {
+    Box(modifier.onSizeChanged { screen = it }) {
         // Both washes are opaque, so the old one stays whole underneath while the new one fades in.
-        AtmosphericWash(previous, Modifier.fillMaxSize().graphicsLayer {
-            alpha = if (fade.value < 1f) 1f else 0f
-        })
-        AtmosphericWash(current, Modifier.fillMaxSize().graphicsLayer {
-            compositingStrategy = CompositingStrategy.ModulateAlpha
-            alpha = fade.value
-        })
+        previousImage?.let { WashImage(it, Modifier.fillMaxSize().graphicsLayer { alpha = if (fade.value < 1f) 1f else 0f }) }
+        currentImage?.let {
+            WashImage(it, Modifier.fillMaxSize().graphicsLayer {
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+                alpha = fade.value
+            })
+        }
     }
 }
 
-/**
- * The wash is soft enough to render once at 1/8 size and stretch, so each frame the GPU fills one
- * texture instead of the screen gradient plus four colour pools.
- */
 @Composable
-private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
-    Box(modifier.drawWithCache {
-        val image = ImageBitmap(
-            (size.width / WASH_SCALE).toInt().coerceAtLeast(1),
-            (size.height / WASH_SCALE).toInt().coerceAtLeast(1),
-        )
-        Analytics.timed("wash.render.ms") {
-            CanvasDrawScope().draw(Density(1f), layoutDirection, Canvas(image), Size(image.width.toFloat(), image.height.toFloat())) {
-                drawWash(colors)
-            }
-        }
-        val screen = IntSize(size.width.roundToInt(), size.height.roundToInt())
-        onDrawBehind { drawImage(image, dstSize = screen, filterQuality = FilterQuality.Low) }
+private fun WashImage(image: ImageBitmap, modifier: Modifier) {
+    Box(modifier.drawBehind {
+        drawImage(image, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Low)
     })
 }
+
+/**
+ * The wash is soft enough to render at 1/8 size and stretch, so each frame the GPU fills one texture
+ * instead of the screen gradient plus four colour pools. Rendering happens off the main thread, and
+ * recently shown washes are kept so revisiting a poster costs nothing.
+ */
+private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
+    val key = colors to screen
+    synchronized(washCache) { washCache[key] }?.let { return it }
+    val image = ImageBitmap(
+        (screen.width / WASH_SCALE).toInt().coerceAtLeast(1),
+        (screen.height / WASH_SCALE).toInt().coerceAtLeast(1),
+    )
+    Analytics.timed("wash.render.ms") {
+        CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(image), Size(image.width.toFloat(), image.height.toFloat())) {
+            drawWash(colors)
+        }
+    }
+    image.prepareToDraw()
+    synchronized(washCache) {
+        washCache[key] = image
+        if (washCache.size > WASH_CACHE) washCache.remove(washCache.keys.first())
+    }
+    return image
+}
+
+private const val WASH_CACHE = 24
+private val washCache = LinkedHashMap<Pair<MovieAtmosphere, IntSize>, ImageBitmap>(WASH_CACHE + 1, 0.75f, true)
 
 private const val WASH_SCALE = 8f
 
