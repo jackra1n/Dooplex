@@ -2,13 +2,13 @@
 """Drives a fixed key pattern on Dooplex through the Zidoo's remote-control API and reports how
 smoothly the development build drew it, from its analytics.
 
-    python3 tools/bench.py [--pattern home|deep|movie|show] [--cold memory|disk] [--passes N]
+    python3 tools/bench.py [--pattern home|deep|movie|show|switch] [--cold memory|disk] [--passes N]
                            [--flags heromask=0,wash=1] [--label name]
 
 Needs `mise run receiver` and the app open on any screen. Each run starts from the same state: the
 app rebuilds Home (home, deep) or reopens the library (movie, show), after dropping its poster caches
 when --cold asks for it, and every further pass returns focus to the first item. "deep" visits new
-rows and cards on Home, for cold runs. Switches go to analytics/flags and commands to
+rows and cards on Home, for cold runs; "switch" confirms the Movies, Home, TV Shows and Home tabs. Switches go to analytics/flags and commands to
 analytics/commands; the receiver hands both to the app. Results also append to analytics/bench.log.
 """
 import argparse
@@ -110,15 +110,15 @@ def stat(window, name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pattern", choices=["home", "deep", "movie", "show"], default="home")
+    parser.add_argument("--pattern", choices=["home", "deep", "movie", "show", "switch"], default="home")
     parser.add_argument("--cold", choices=["memory", "disk"])
     parser.add_argument("--passes", type=int)
     parser.add_argument("--flags", default="")
     parser.add_argument("--label", default="")
     args = parser.parse_args()
     passes = args.passes or (1 if args.cold or args.pattern == "deep" else 3)
-    screen = "home" if args.pattern in ("home", "deep") else args.pattern
-    pattern = PATTERNS["grid" if screen != "home" else args.pattern]
+    screen = args.pattern if args.pattern in ("movie", "show") else "home"
+    pattern = PATTERNS.get("grid" if screen != "home" else args.pattern)
     ANALYTICS.mkdir(exist_ok=True)
 
     send("Right")  # wakes a box that went idle; the setup below resets focus anyway
@@ -129,8 +129,15 @@ def main():
     sent, done = command(setup, screen)
     opened = (done["t"] - sent["t"]) / 1000
 
-    windows, steps = [], 0
+    windows, steps, switches = [], 0, []
     for index in range(passes):
+        if args.pattern == "switch":
+            begin = now_ms()
+            for tab in ("movie", "home", "show", "home"):
+                sent, done = command([f"tab:{tab}"], tab)
+                switches.append(done["t"] - sent["t"])
+            windows.append((begin, now_ms()))
+            continue
         if index:
             command(["focus"], screen)
         begin, end, count = drive(pattern)
@@ -165,6 +172,8 @@ def main():
     for e in sorted(slow, key=lambda e: -e["ms"])[:3]:
         parts = " ".join(f"{k} {e[k]}" for k in ("delay", "anim", "layout", "draw", "sync", "cmd", "swap") if e.get(k, 0) >= 3)
         lines.append(f"  {e['ms']:6.1f} ms after {e.get('cause') or '?'}: {parts}")
+    if switches:
+        lines.insert(1, f"  switches: {len(switches)}, ready after median {statistics.median(switches):.0f} ms, max {max(switches)} ms")
     print("\n".join(lines), flush=True)
     with open(ANALYTICS / "bench.log", "a") as log:
         log.write("\n".join(lines) + "\n")

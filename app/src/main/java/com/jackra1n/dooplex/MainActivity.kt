@@ -262,6 +262,14 @@ class MainActivity : ComponentActivity() {
             "home" -> restartHome()
             "open:movie", "open:show" -> reopenLibrary(command.removePrefix("open:"))
             "focus" -> collectionFocus.enterContent(if (showingHome) "home" else activeLibrary?.type ?: return)
+            "tab:home" -> {
+                collectionFocus.enterContent("home")
+                showHome()
+            }
+            "tab:movie", "tab:show" -> {
+                collectionFocus.enterContent(command.removePrefix("tab:"))
+                selectCollection(command.removePrefix("tab:"))
+            }
         }
     }
 
