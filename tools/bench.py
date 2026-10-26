@@ -121,6 +121,7 @@ def main():
     pattern = PATTERNS["grid" if screen != "home" else args.pattern]
     ANALYTICS.mkdir(exist_ok=True)
 
+    send("Right")  # wakes a box that went idle; the setup below resets focus anyway
     (ANALYTICS / "flags").write_text(args.flags)
     if not wait_for(lambda e: e.get("event") == "frames" and e.get("flags", "") == args.flags, now_ms(), 15):
         raise SystemExit("The app did not report the requested flags; is it open and `mise run receiver` running?")
@@ -148,7 +149,7 @@ def main():
     over = sum(ms - FRAME_MS for ms in times)
 
     def median(name):
-        return statistics.median([e.get(name, 0) for e in slow]) if slow else 0
+        return round(statistics.median([e.get(name, 0) for e in slow]), 1) if slow else 0
 
     def pct(p):
         return times[min(len(times) - 1, int(len(times) * p))] if times else 0
@@ -161,6 +162,9 @@ def main():
         f"median anim {median('anim')} draw {median('draw')} sync {median('sync')} cmd {median('cmd')} swap {median('swap')}",
         f"  posters: {stat(flushed, 'poster.wait.ms')}; {stat(flushed, 'poster.network.ms')}; {stat(flushed, 'poster.disk.ms')}",
     ]
+    for e in sorted(slow, key=lambda e: -e["ms"])[:3]:
+        parts = " ".join(f"{k} {e[k]}" for k in ("delay", "anim", "layout", "draw", "sync", "cmd", "swap") if e.get(k, 0) >= 3)
+        lines.append(f"  {e['ms']:6.1f} ms after {e.get('cause') or '?'}: {parts}")
     print("\n".join(lines), flush=True)
     with open(ANALYTICS / "bench.log", "a") as log:
         log.write("\n".join(lines) + "\n")
