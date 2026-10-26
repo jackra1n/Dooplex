@@ -47,13 +47,18 @@ def now_ms():
     return int(time.time() * 1000)
 
 
-def wait_for_flags(wanted, timeout_s=15):
+def wait_for_flags(wanted, timeout_s=30):
+    """An idle app draws no frames and so reports none; Right then Left (Play to Details and back)
+    makes it draw without paging the hero, until a frame report carries the requested flags."""
     start = now_ms()
     while now_ms() - start < timeout_s * 1000:
+        send("Right")
+        time.sleep(0.6)
+        send("Left")
+        time.sleep(1.4)
         reports = [e for e in events(start) if e.get("event") == "frames"]
         if reports and reports[-1].get("flags", "") == wanted:
             return True
-        time.sleep(1)
     return False
 
 
