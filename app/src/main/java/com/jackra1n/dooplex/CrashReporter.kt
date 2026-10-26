@@ -117,7 +117,7 @@ internal object CrashReporter {
         return String(bytes, 0, size)
     }
 
-    private fun send(url: String, report: String): Boolean = try {
+    fun send(url: String, report: String): Boolean = try {
         val http = URI(url).toURL().openConnection() as HttpURLConnection
         try {
             http.requestMethod = "POST"
