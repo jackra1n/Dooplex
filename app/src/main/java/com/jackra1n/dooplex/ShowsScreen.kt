@@ -88,8 +88,9 @@ import kotlinx.coroutines.launch
 
 /**
  * One full-span header shares the lazy viewport with index-keyed cards, including unloaded slots.
- * Page fills never replace focus nodes. Vertical movement keeps the column and reveals only its row;
- * header focus instead reveals index zero and all top spacing. Both scroll and focus survive returns.
+ * Page fills never replace focus nodes. Vertical movement keeps the column and reveals the complete
+ * scaled episode card inside the same TV-safe inset as the sides, including the final metadata line.
+ * Header focus instead reveals index zero and all top spacing. Scroll and focus survive returns.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -169,7 +170,12 @@ internal fun ShowsScreen(
             when { maxWidth >= 1400.dp -> 7; maxWidth >= 1000.dp -> 6; maxWidth >= 780.dp -> 5; maxWidth >= 580.dp -> 4; else -> 3 }
         }
         val density = LocalDensity.current
-        val artworkWidth = artworkBucket(with(density) { ((maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns).toPx() })
+        // The layout reserves the scale overhang too, so the visible card retains the full safe inset.
+        val episodeOverhang = if (episodes) maxWidth / columns * 0.0175f else 0.dp
+        val horizontalEdge = edge + episodeOverhang
+        val bottomEdge = if (episodes) edge + maxHeight * 0.0175f else 36.dp
+        val safeInsetPx = with(density) { if (episodes) edge.toPx() else 0f }
+        val artworkWidth = artworkBucket(with(density) { ((maxWidth - horizontalEdge * 2 - 18.dp * (columns - 1)) / columns).toPx() })
         val count = if (state.total > 0) state.total else if (state.loading) columns * 2 else 0
         val noun = when (state.level) {
             ShowBrowseLevel.SHOWS -> "show"
@@ -204,15 +210,30 @@ internal fun ShowsScreen(
                 coroutineScope {
                     val layout = grid.layoutInfo
                     val visible = layout.visibleItemsInfo.firstOrNull { it.index == lazyIndex }
-                    if (directional) {
-                        val below = visible?.let { it.offset.y + it.size.height > layout.viewportEndOffset }
+                    if (directional || episodes) {
+                        val height = visible?.size?.height
+                            ?: layout.visibleItemsInfo.firstOrNull { it.index > 0 }?.size?.height
+                            ?: (layout.viewportEndOffset - layout.viewportStartOffset)
+                        val overhang = if (episodes) height * 0.0175f else 0f
+                        // Keep both edges safe whenever the complete card fits. On exceptionally short
+                        // viewports, center an oversized card rather than alternating edge corrections.
+                        val margin = (safeInsetPx + overhang).coerceAtMost(
+                            ((layout.viewportEndOffset - layout.viewportStartOffset - height) / 2f).coerceAtLeast(0f),
+                        )
+                        val safeTop = layout.viewportStartOffset + margin
+                        val safeBottom = layout.viewportEndOffset - margin
+                        val below = visible?.let { it.offset.y + height > safeBottom }
                             ?: (lazyIndex > grid.firstVisibleItemIndex)
-                        val above = visible?.let { it.offset.y < layout.viewportStartOffset } ?: !below
+                        val above = visible?.let { it.offset.y < safeTop } ?: !below
                         if (above || below) {
-                            val height = visible?.size?.height ?: layout.visibleItemsInfo.firstOrNull { it.index > 0 }?.size?.height
-                                ?: (layout.viewportEndOffset - layout.viewportStartOffset)
-                            val offset = if (below) -(layout.viewportEndOffset - height).coerceAtLeast(0) else 0
-                            launch { grid.animateScrollToItem(1 + target / columns * columns, offset) }
+                            val top = when {
+                                height > layout.viewportEndOffset - layout.viewportStartOffset ->
+                                    (layout.viewportStartOffset + layout.viewportEndOffset - height) / 2f
+                                below -> safeBottom - height
+                                else -> safeTop
+                            }
+                            // Scroll the row, never the column: focus changes cannot pan horizontally.
+                            launch { grid.animateScrollToItem(1 + target / columns * columns, -top.toInt()) }
                         }
                     } else if (visible == null) grid.scrollToItem(lazyIndex)
                     val requester = snapshotFlow {
@@ -236,7 +257,7 @@ internal fun ShowsScreen(
         CompositionLocalProvider(LocalBringIntoViewSpec provides bringSpec) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columns), state = grid,
-                contentPadding = PaddingValues(start = edge, end = edge, bottom = 36.dp),
+                contentPadding = PaddingValues(start = horizontalEdge, end = horizontalEdge, bottom = bottomEdge),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp),
                 modifier = Modifier.fillMaxSize().focusGroup(),
