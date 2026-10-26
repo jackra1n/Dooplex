@@ -203,7 +203,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         return bitmap
     }
 
-    /** Drops decoded posters, so an experiment that changes how they are stored applies to every card. */
+    /** Drops decoded posters, so a benchmark can start cold. */
     fun clearMemory() = synchronized(lock) {
         memory.clear()
         memoryBytes = 0L
@@ -211,25 +211,11 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
 
     fun clearDisk() = disk.clear()
 
-    // A hardware bitmap uploads here, off the render thread, instead of on its first drawn frame.
+    // The render thread uploads the texture between frames. A hardware bitmap would instead be
+    // imported by the GPU inside the first frame that draws it, which stalls that frame on this box.
     private fun toGpu(decoded: Bitmap): Bitmap {
-        if (!Analytics.flag("hwbitmaps")) {
-            decoded.prepareToDraw()
-            return decoded
-        }
-        val hardware = try {
-            decoded.copy(Bitmap.Config.HARDWARE, false)
-        } catch (_: RuntimeException) {
-            null
-        } catch (_: OutOfMemoryError) {
-            null
-        }
-        if (hardware == null) {
-            decoded.prepareToDraw()
-            return decoded
-        }
-        decoded.recycle()
-        return hardware
+        decoded.prepareToDraw()
+        return decoded
     }
 
     private fun download(url: String, context: CoroutineContext): ImageBytes {
