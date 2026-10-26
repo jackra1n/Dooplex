@@ -11,11 +11,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,53 +34,118 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /**
- * One quiet collection track: the grey route marker persists independently of the bright focus pill.
- * D-pad movement only moves focus; Center/click confirms a route. Translation is draw-only, without
- * animated measurement or recomposition. A single available source keeps the same tab behavior.
+ * Parent-owned focus intent outlives route composition and persistence work. Tab confirmation never
+ * asks a destination to restore a poster; only Down explicitly hands focus to that route's header.
+ * Ordinary child/details returns keep their existing content restoration. Passive fallback cannot
+ * replace navigation/header ownership; horizontal key intent explicitly moves between tab targets.
+ */
+@Stable
+internal class CollectionFocusState {
+    val movieTab = FocusRequester()
+    val showTab = FocusRequester()
+    var navigationType by mutableStateOf<String?>(null)
+        private set
+    var navigationEpoch by mutableIntStateOf(0)
+        private set
+    var headerRoute by mutableStateOf<String?>(null)
+        private set
+    var headerEpoch by mutableIntStateOf(0)
+        private set
+
+    fun focusTab(type: String) {
+        if (headerRoute != null) return
+        if (navigationType == null) navigationType = type
+        else if (navigationType != type) navigationEpoch++
+    }
+
+    fun moveTab(type: String) {
+        navigationType = type
+        headerRoute = null
+        navigationEpoch++
+    }
+
+    fun confirmTab(type: String) {
+        moveTab(type)
+    }
+
+    fun enterHeader(route: String) {
+        navigationType = null
+        headerRoute = route
+        headerEpoch++
+    }
+
+    fun completeHeader(route: String) {
+        if (headerRoute == route) headerRoute = null
+    }
+}
+
+/**
+ * One quiet collection track: the route marker persists independently of the bright focus pill.
+ * Stable parent-owned requesters reattach when lazy headers scroll or destinations change.
+ * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CollectionNavigationBar(
     accountName: String,
     activeType: String,
-    hasMovies: Boolean,
-    hasShows: Boolean,
+    movieTitle: String?,
+    showTitle: String?,
+    focus: CollectionFocusState,
     enabled: Boolean,
     onMovies: () -> Unit,
     onShows: () -> Unit,
+    onDown: () -> Unit,
 ) {
-    val tabs = remember(hasMovies, hasShows) {
+    val tabs = remember(movieTitle, showTitle) {
         buildList {
-            if (hasMovies) add("movie" to "Movies")
-            if (hasShows) add("show" to "Shows")
+            if (movieTitle != null) add("movie" to movieTitle)
+            if (showTitle != null) add("show" to showTitle)
         }
     }
     var focusedType by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeType, focus.navigationEpoch) {
+        when (focus.navigationType) {
+            "movie" -> focus.movieTab.requestFocus()
+            "show" -> focus.showTab.requestFocus()
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val compact = maxWidth < 720.dp
         val showPeripheral = maxWidth >= 480.dp
-        val tabWidth = (if (compact) 92.dp else 112.dp).coerceAtMost(
-            ((maxWidth - 8.dp) / tabs.size.coerceAtLeast(1)).coerceAtLeast(0.dp),
+        val availableTrack = maxWidth * if (showPeripheral) 0.62f else 1f
+        val tabWidth = (if (compact) 156.dp else 220.dp).coerceAtMost(
+            ((availableTrack - 8.dp) / tabs.size.coerceAtLeast(1)).coerceAtLeast(0.dp),
         )
         val tabWidthPx = with(LocalDensity.current) { tabWidth.toPx() }
         val activeIndex = tabs.indexOfFirst { it.first == activeType }
@@ -79,7 +154,7 @@ internal fun CollectionNavigationBar(
             targetValue = (focusIndex.takeIf { it >= 0 } ?: activeIndex.coerceAtLeast(0)) * tabWidthPx,
             animationSpec = tween(130), label = "collection focus position",
         )
-        val showFocus = enabled && focusIndex >= 0
+        val showFocus = focusIndex >= 0
         Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (showPeripheral) Text("DOOPLEX", color = CinemaColors.Accent,
@@ -90,20 +165,20 @@ internal fun CollectionNavigationBar(
                 val shape = RoundedCornerShape(50)
                 Row(
                     Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
-                        .background(CinemaColors.Foreground.copy(alpha = 0.035f), shape)
-                        .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
+                        .background(CinemaControlColors.Surface, shape)
+                        .border(0.5.dp, CinemaControlColors.Outline, shape)
                         .padding(4.dp)
                         .drawWithCache {
                             val pillSize = Size(tabWidthPx, size.height)
                             val radius = CornerRadius(size.height / 2f)
                             onDrawBehind {
                                 if (activeIndex >= 0) drawRoundRect(
-                                    CinemaColors.Foreground.copy(alpha = 0.13f),
+                                    CinemaControlColors.Active,
                                     topLeft = Offset(activeIndex * tabWidthPx, 0f), size = pillSize,
                                     cornerRadius = radius,
                                 )
                                 if (showFocus) drawRoundRect(
-                                    CinemaColors.Foreground, topLeft = Offset(focusOffset.value, 0f),
+                                    CinemaControlColors.Focus, topLeft = Offset(focusOffset.value, 0f),
                                     size = pillSize, cornerRadius = radius,
                                 )
                             }
@@ -112,16 +187,43 @@ internal fun CollectionNavigationBar(
                     tabs.forEachIndexed { index, (type, label) ->
                         Box(
                             Modifier.width(tabWidth).height(46.dp)
-                                .onFocusChanged {
-                                    if (it.isFocused) focusedType = type
-                                    else if (focusedType == type) focusedType = null
+                                .focusRequester(if (type == "movie") focus.movieTab else focus.showTab)
+                                .onPreviewKeyEvent { event ->
+                                    when (event.key) {
+                                        Key.DirectionDown -> {
+                                            if (enabled && event.type == KeyEventType.KeyDown) onDown()
+                                            true
+                                        }
+                                        Key.DirectionUp -> true
+                                        Key.DirectionLeft, Key.DirectionRight -> {
+                                            if (enabled && event.type == KeyEventType.KeyDown) {
+                                                val current = tabs.indexOfFirst { it.first == focus.navigationType }
+                                                    .takeIf { it >= 0 } ?: index
+                                                val next = (current + if (event.key == Key.DirectionRight) 1 else -1)
+                                                    .coerceIn(0, tabs.lastIndex)
+                                                focus.moveTab(tabs[next].first)
+                                            }
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }.onFocusChanged {
+                                    if (it.isFocused) {
+                                        focusedType = type
+                                        focus.focusTab(type)
+                                    } else if (focusedType == type) focusedType = null
                                 }
                                 .semantics { selected = activeType == type }
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = null, enabled = enabled, role = Role.Tab,
-                                    onClick = if (type == "movie") onMovies else onShows,
-                                ).padding(horizontal = 8.dp),
+                                    indication = null, role = Role.Tab,
+                                    onClick = {
+                                        if (enabled) {
+                                            focus.confirmTab(type)
+                                            if (type == "movie") onMovies() else onShows()
+                                        }
+                                    },
+                                ).padding(horizontal = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(label, color = CinemaColors.Foreground,
@@ -152,6 +254,86 @@ internal fun CollectionNavigationBar(
                     fontSize = if (compact) 13.sp else 16.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+        }
+    }
+}
+
+/** A single library stays a compact label; multiple same-type sources expose an ID-keyed chooser. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun CollectionLibraryControl(
+    library: PlexLibrary,
+    libraries: List<PlexLibrary>,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onChoose: (PlexLibrary) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    if (libraries.size > 1) {
+        var open by remember(library.key) { mutableStateOf(false) }
+        CinemaButton(onClick = { open = true }, enabled = enabled, modifier = modifier.widthIn(max = 300.dp)) {
+            Text("${library.title}  ⌄", fontSize = 16.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { contentDescription = "Library: ${library.title}. Choose another library." })
+        }
+        if (open) CollectionLibraryDialog(
+            libraries = libraries,
+            selectedKey = library.key,
+            onDismiss = { open = false; onDismiss() },
+            onChoose = { open = false; onChoose(it) },
+        )
+    } else {
+        Text(library.title, color = CinemaColors.Foreground, fontSize = 18.sp,
+            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = modifier.padding(horizontal = 8.dp))
+    }
+}
+
+/** Duplicate titles remain distinguishable, while selection and persistence always use library IDs. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun CollectionLibraryDialog(
+    libraries: List<PlexLibrary>,
+    selectedKey: String?,
+    onDismiss: () -> Unit,
+    onChoose: (PlexLibrary) -> Unit,
+) {
+    val initial = remember { FocusRequester() }
+    val initialKey = selectedKey?.takeIf { key -> libraries.any { it.key == key } } ?: libraries.firstOrNull()?.key
+    val duplicateTitles = remember(libraries) { libraries.groupingBy { it.title }.eachCount().filterValues { it > 1 }.keys }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopCenter) {
+            Column(
+                Modifier.padding(top = 80.dp).widthIn(max = 520.dp).fillMaxWidth()
+                    .background(CinemaColors.Canvas, RoundedCornerShape(22.dp)).padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Choose a library", color = CinemaColors.Foreground, fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 10.dp))
+                libraries.forEach { library ->
+                    CinemaButton(
+                        onClick = { onChoose(library) }, selected = selectedKey == library.key,
+                        modifier = Modifier.fillMaxWidth()
+                            .then(if (library.key == initialKey) Modifier.focusRequester(initial) else Modifier),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(library.title, fontSize = 17.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (library.title in duplicateTitles) Text("Library ${library.key}",
+                                fontSize = 13.sp)
+                        }
+                        if (library.key == selectedKey) Text("Selected", fontSize = 12.sp)
+                    }
+                }
+                CinemaButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Cancel", fontSize = 16.sp)
+                }
+            }
+        }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            if (initialKey != null) initial.requestFocus()
         }
     }
 }

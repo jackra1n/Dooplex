@@ -91,6 +91,8 @@ import kotlinx.coroutines.launch
  * Page fills never replace focus nodes. Vertical movement keeps the column and reveals the complete
  * scaled episode card inside the same TV-safe inset as the sides, including the final metadata line.
  * Header focus instead reveals index zero and all top spacing. Scroll and focus survive returns.
+ * Parent navigation intent suppresses poster restoration until Down explicitly enters this header;
+ * tab confirmation reveals all chrome while retaining the content viewport for deliberate re-entry.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalTvMaterial3Api::class)
 @Composable
@@ -102,12 +104,20 @@ internal fun ShowsScreen(
     onBack: () -> Unit,
     onItem: (PlexBrowseItem) -> Unit,
     navigation: @Composable () -> Unit,
+    focus: CollectionFocusState,
+    library: PlexLibrary,
+    libraries: List<PlexLibrary>,
+    onLibrary: (PlexLibrary) -> Unit,
 ) {
     val grid = rememberSaveable(state.path, saver = LazyGridState.Saver) { LazyGridState() }
     var focusedIndex by rememberSaveable(state.path) { mutableIntStateOf(0) }
     var headerSelected by rememberSaveable(state.path) { mutableStateOf(false) }
     val requesters = remember(state) { mutableStateMapOf<Int, FocusRequester>() }
     val backFocus = remember(state) { FocusRequester() }
+    val libraryFocus = remember(state) { FocusRequester() }
+    val route = "show:${state.path}"
+    var navigationViewportIndex by rememberSaveable(state.path) { mutableIntStateOf(-1) }
+    var navigationViewportOffset by rememberSaveable(state.path) { mutableIntStateOf(0) }
     var headerMounted by remember(state) { mutableStateOf(false) }
     var needsFocus by remember(state) { mutableStateOf(true) }
     var pendingIndex by remember(state) { mutableStateOf<Int?>(null) }
@@ -119,7 +129,8 @@ internal fun ShowsScreen(
     val bringSpec = remember(state) {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-                if (directional || revealHeader) 0f else super.calculateScrollDistance(offset, size, containerSize)
+                if (directional || revealHeader || focus.navigationType != null) 0f
+                else super.calculateScrollDistance(offset, size, containerSize)
         }
     }
 
@@ -142,9 +153,46 @@ internal fun ShowsScreen(
         focusEpoch++
     }
 
+    fun enterContent() {
+        pendingIndex = focusedIndex
+        headerSelected = false
+        revealHeader = false
+        directional = false
+        needsFocus = true
+        focusEpoch++
+    }
+
+    LaunchedEffect(state, focus.navigationType, focus.navigationEpoch) {
+        if (focus.navigationType == null) return@LaunchedEffect
+        if (navigationViewportIndex < 0) {
+            navigationViewportIndex = grid.firstVisibleItemIndex
+            navigationViewportOffset = grid.firstVisibleItemScrollOffset
+        }
+        needsFocus = false
+        pendingIndex = null
+        revealHeader = false
+        directional = false
+        focusEpoch++
+        grid.scrollToItem(0)
+        snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
+        withFrameNanos { }
+        when (focus.navigationType) {
+            "movie" -> focus.movieTab.requestFocus()
+            "show" -> focus.showTab.requestFocus()
+        }
+    }
+    LaunchedEffect(route, focus.headerEpoch, enabled) {
+        if (focus.headerRoute != route || !enabled) return@LaunchedEffect
+        needsFocus = true
+        headerSelected = true
+        revealHeader = true
+        directional = false
+        focusEpoch++
+    }
+
     BackHandler(enabled = enabled, onBack = onBack)
     LaunchedEffect(enabled) {
-        if (enabled) {
+        if (enabled && focus.navigationType == null) {
             needsFocus = true
             focusEpoch++
         }
@@ -193,17 +241,25 @@ internal fun ShowsScreen(
             }
         }
 
-        LaunchedEffect(focusEpoch, enabled, state.total, state.loading, columns) {
-            if (!enabled || !needsFocus && !revealHeader) return@LaunchedEffect
+        LaunchedEffect(focusEpoch, enabled, state.total, state.loading, columns, focus.navigationType, focus.headerRoute) {
+            if (!enabled || focus.navigationType != null || focus.headerRoute?.let { it != route } == true ||
+                !needsFocus && !revealHeader) return@LaunchedEffect
             val epoch = focusEpoch
             if (revealHeader || headerSelected || count == 0) {
                 coroutineScope {
-                    launch { grid.animateScrollToItem(0) }
+                    if (directional) launch { grid.animateScrollToItem(0) } else grid.scrollToItem(0)
                     snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
                     withFrameNanos { }
-                    if (needsFocus && epoch == focusEpoch) backFocus.requestFocus()
+                    if (needsFocus && epoch == focusEpoch) {
+                        (if (focus.headerRoute == route && libraries.size > 1) libraryFocus else backFocus).requestFocus()
+                        focus.completeHeader(route)
+                    }
                 }
             } else {
+                if (!directional && navigationViewportIndex >= 0) {
+                    grid.scrollToItem(navigationViewportIndex, navigationViewportOffset)
+                    navigationViewportIndex = -1
+                }
                 val target = (pendingIndex ?: focusedIndex).coerceIn(0, count - 1)
                 val lazyIndex = target + 1
                 coroutineScope {
@@ -273,6 +329,16 @@ internal fun ShowsScreen(
                             "${state.total} $noun${if (state.total == 1) "" else "s"}${if (state.loading) " · Loading…" else ""}",
                         hint = null,
                         navigation = navigation,
+                        libraryControl = { modifier ->
+                            CollectionLibraryControl(
+                                library = library,
+                                libraries = libraries,
+                                enabled = enabled,
+                                modifier = modifier.focusRequester(libraryFocus),
+                                onChoose = onLibrary,
+                                onDismiss = { focus.enterHeader(route) },
+                            )
+                        },
                         compact = compact,
                         enabled = enabled,
                         backFocus = backFocus,
@@ -282,7 +348,7 @@ internal fun ShowsScreen(
                             if (state.error != null) CinemaButton(onClick = state::retry, enabled = enabled) { ShowControlText("Retry") }
                         },
                         modifier = Modifier.fillMaxWidth().onFocusChanged {
-                            if (it.hasFocus && !needsFocus) {
+                            if (it.hasFocus && !needsFocus && focus.navigationType == null) {
                                 headerSelected = true
                                 if (enabled && grid.canScrollBackward && !revealHeader) {
                                     revealHeader = true
@@ -303,8 +369,8 @@ internal fun ShowsScreen(
                             }
                             false
                         }.focusGroup().onPreviewKeyEvent { event ->
-                            if (enabled && event.key == Key.DirectionDown && count > 0) {
-                                if (event.type == KeyEventType.KeyDown) moveFocus((focusedIndex % columns).coerceAtMost(count - 1))
+                            if (enabled && focus.navigationType == null && event.key == Key.DirectionDown && count > 0) {
+                                if (event.type == KeyEventType.KeyDown) enterContent()
                                 true
                             } else false
                         },
@@ -378,7 +444,7 @@ internal fun ShowsScreen(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ShowControlText(text: String) {
-    Text(text, color = CinemaColors.Foreground, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

@@ -137,14 +137,19 @@ private suspend fun LazyGridState.scrollToCollectionLetter(index: Int) {
  * Vertical DPAD targets retain their column and take focus when visible, without waiting for scroll completion.
  * Directional reveals own scrolling until completion so early focus cannot replace their animation.
  * Header focus reveals all chrome and top spacing, not just the active control's minimum bounds.
+ * Navigation owns focus across route/busy transitions; only Down hands it to the compact header.
+ * Its prior content viewport is retained separately while the complete header is revealed.
  * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun CollectionScreen(
+internal fun CollectionScreen(
     state: CollectionLibraryState,
     posters: PosterRepository,
     navigation: @Composable () -> Unit,
+    focus: CollectionFocusState,
+    libraries: List<PlexLibrary>,
+    onLibrary: (PlexLibrary) -> Unit,
     playbackRunning: Boolean,
     error: String?,
     onBack: () -> Unit,
@@ -157,6 +162,10 @@ fun CollectionScreen(
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
+    val libraryFocus = remember { FocusRequester() }
+    val route = "library:${state.library.key}"
+    var navigationViewportIndex by rememberSaveable(state.library.key) { mutableIntStateOf(-1) }
+    var navigationViewportOffset by rememberSaveable(state.library.key) { mutableIntStateOf(0) }
     var headerMounted by remember(state) { mutableStateOf(false) }
     var focusedIndex by rememberSaveable(state.library.key) { mutableIntStateOf(0) }
     // Dialog/window focus handoffs must not overwrite the poster chosen for restoration.
@@ -167,7 +176,8 @@ fun CollectionScreen(
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
                 // A directional reveal owns the animation; focus must not start a competing scroll.
-                if (directionalFocus) 0f else super.calculateScrollDistance(offset, size, containerSize)
+                if (directionalFocus || focus.navigationType != null) 0f
+                else super.calculateScrollDistance(offset, size, containerSize)
         }
     }
     var sortOpen by remember { mutableStateOf(false) }
@@ -230,12 +240,41 @@ fun CollectionScreen(
         restoreGrid()
     }
 
+    LaunchedEffect(state, focus.navigationType, focus.navigationEpoch) {
+        if (focus.navigationType == null) return@LaunchedEffect
+        if (navigationViewportIndex < 0) {
+            navigationViewportIndex = grid.firstVisibleItemIndex
+            navigationViewportOffset = grid.firstVisibleItemScrollOffset
+        }
+        needsFocus = false
+        pendingFocusIndex = null
+        restoreToHeader = false
+        directionalFocus = false
+        railRestorePending = false
+        restoreEpoch++
+        grid.scrollToItem(0)
+        snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
+        withFrameNanos { }
+        when (focus.navigationType) {
+            "movie" -> focus.movieTab.requestFocus()
+            "show" -> focus.showTab.requestFocus()
+        }
+    }
+    LaunchedEffect(route, focus.headerEpoch, playbackRunning, modalOpen) {
+        if (focus.headerRoute != route || playbackRunning || modalOpen) return@LaunchedEffect
+        needsFocus = true
+        restoreToHeader = true
+        directionalFocus = false
+        restoreEpoch++
+    }
+
     LaunchedEffect(state.generation) {
         if (lastGeneration != state.generation) {
             lastGeneration = state.generation
             focusedIndex = state.jumpRequest?.index ?: 0
+            navigationViewportIndex = -1
             pendingFocusIndex = focusedIndex
-            needsFocus = !railHasFocus && !awaitingJump && !railRestorePending
+            needsFocus = focus.navigationType == null && !railHasFocus && !awaitingJump && !railRestorePending
             restoreEpoch++
             if (state.jumpRequest == null) grid.scrollToItem(0)
         }
@@ -251,7 +290,7 @@ fun CollectionScreen(
         state.completeJump(jump.id)
     }
     LaunchedEffect(playbackRunning) {
-        if (wasPlaying && !playbackRunning) {
+        if (wasPlaying && !playbackRunning && focus.navigationType == null) {
             needsFocus = true
             restoreEpoch++
         }
@@ -266,10 +305,9 @@ fun CollectionScreen(
         if (!state.alphabetLoading) railRestorePending = false
     }
     // No focus requests are keyed to page fills, details refreshes, or playback position reports.
-    LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading) {
-        if (playbackRunning || modalOpen ||
-            (!needsFocus && !restoreToHeader &&
-                (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
+    LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading, focus.navigationType, focus.headerRoute) {
+        if (focus.navigationType != null || focus.headerRoute?.let { it != route } == true ||
+            playbackRunning || modalOpen || !needsFocus && !restoreToHeader) return@LaunchedEffect
         val focusEpoch = restoreEpoch
         if (restoreToHeader) {
             coroutineScope {
@@ -278,9 +316,18 @@ fun CollectionScreen(
                     headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 }
                 }.first { it }
                 withFrameNanos { }
-                if (needsFocus && restoreEpoch == focusEpoch) sortFocus.requestFocus()
+                if (needsFocus && restoreEpoch == focusEpoch) {
+                    (if (focus.headerRoute == route) {
+                        if (libraries.size > 1) libraryFocus else sortFocus
+                    } else sortFocus).requestFocus()
+                    focus.completeHeader(route)
+                }
             }
         } else if (state.total > 0 || state.loading) {
+            if (!directionalFocus && navigationViewportIndex >= 0) {
+                grid.scrollToItem(navigationViewportIndex, navigationViewportOffset)
+                navigationViewportIndex = -1
+            }
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
             val gridIndex = target + COLLECTION_GRID_HEADER_ITEMS
             coroutineScope {
@@ -464,6 +511,10 @@ fun CollectionScreen(
                         CollectionHeader(
                             state = state,
                             navigation = navigation,
+                            libraryFocus = libraryFocus,
+                            libraries = libraries,
+                            onLibrary = onLibrary,
+                            onLibraryDismiss = { focus.enterHeader(route) },
                             error = error,
                             compact = compact,
                             enabled = controlsEnabled,
@@ -475,16 +526,21 @@ fun CollectionScreen(
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) {
                                     gridHasFocus = false
-                                    if (controlsEnabled) revealHeader()
+                                    if (controlsEnabled && focus.navigationType == null) revealHeader()
                                 } else if (restoreToHeader && !needsFocus) {
                                     restoreToHeader = false
                                     directionalFocus = false
                                     restoreEpoch++
                                 }
                             }.onPreviewKeyEvent { event ->
-                                if (controlsEnabled && event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown)
-                                    revealHeader()
-                                false
+                                if (controlsEnabled && focus.navigationType == null && event.key == Key.DirectionDown) {
+                                    if (event.type == KeyEventType.KeyDown) restoreGrid()
+                                    true
+                                } else {
+                                    if (controlsEnabled && event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown)
+                                        revealHeader()
+                                    false
+                                }
                             }.focusGroup(),
                         )
                     }
@@ -661,6 +717,10 @@ fun CollectionScreen(
 private fun CollectionHeader(
     state: CollectionLibraryState,
     navigation: @Composable () -> Unit,
+    libraryFocus: FocusRequester,
+    libraries: List<PlexLibrary>,
+    onLibrary: (PlexLibrary) -> Unit,
+    onLibraryDismiss: () -> Unit,
     error: String?,
     compact: Boolean,
     enabled: Boolean,
@@ -672,8 +732,18 @@ private fun CollectionHeader(
     modifier: Modifier,
 ) {
     CollectionHeaderChrome(
-        title = state.title,
-        subtitle = state.library.title,
+        title = "",
+        subtitle = "",
+        libraryControl = { modifier ->
+            CollectionLibraryControl(
+                library = state.library,
+                libraries = libraries,
+                enabled = enabled,
+                modifier = modifier.focusRequester(libraryFocus),
+                onChoose = onLibrary,
+                onDismiss = onLibraryDismiss,
+            )
+        },
         count = when {
             state.loading -> "Loading your library…"
             state.unwatchedOnly -> "${state.total} unwatched ${state.noun}s"
@@ -706,7 +776,7 @@ private fun CollectionHeader(
     }
 }
 
-/** Shared collection chrome fixes navigation, heading, controls and count placement for every level. */
+/** Scrolling chrome shares library selection, counts and control positions without a giant type title. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CollectionHeaderChrome(
@@ -715,6 +785,7 @@ internal fun CollectionHeaderChrome(
     count: String,
     hint: String?,
     navigation: @Composable () -> Unit,
+    libraryControl: @Composable (Modifier) -> Unit,
     compact: Boolean,
     enabled: Boolean,
     backFocus: FocusRequester,
@@ -735,10 +806,13 @@ internal fun CollectionHeaderChrome(
                 ControlText(backLabel)
             }
             Column(Modifier.weight(1f)) {
-                Text(title, color = CinemaColors.Foreground, fontSize = if (compact) 28.sp else 34.sp,
-                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, color = CinemaColors.Muted, fontSize = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                libraryControl(Modifier)
+                if (title.isNotBlank()) Text(
+                    listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" · "),
+                    color = CinemaColors.Muted, fontSize = if (compact) 16.sp else 18.sp,
+                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+                )
             }
             if (!compact) actions()
         }
@@ -910,7 +984,7 @@ private fun CollectionLetterButton(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ControlText(text: String) {
-    Text(text, color = CinemaColors.Foreground, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+    Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium,
         maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
@@ -943,7 +1017,7 @@ private fun CollectionSortDialog(current: CollectionSort, onDismiss: () -> Unit,
                         modifier = Modifier.fillMaxWidth().then(if (current == sort) Modifier.focusRequester(initial) else Modifier)) {
                         ControlText(sort.title)
                         Spacer(Modifier.weight(1f))
-                        if (current == sort) Text("Selected", color = CinemaColors.Accent, fontSize = 12.sp)
+                        if (current == sort) Text("Selected", fontSize = 12.sp)
                     }
                 }
                 CinemaButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { ControlText("Cancel") }

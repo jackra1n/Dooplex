@@ -34,7 +34,9 @@ class MainActivity : ComponentActivity() {
     private var posterRepository: PosterRepository? = null
     private var serverId: String? = null
     private var serverName = ""
-    private var navigationSelection = PlexNavigationSelection()
+    private var navigationSelection by mutableStateOf(PlexNavigationSelection())
+    private val collectionFocus = CollectionFocusState()
+    private var choosingLibraryType by mutableStateOf<String?>(null)
     private var pendingMovie: String? = null
     private var pendingShow: ShowBrowseState? = null
     private var actionJob: Job? = null
@@ -65,18 +67,21 @@ class MainActivity : ComponentActivity() {
                 val posters = posterRepository
                 if (state.stage == BrowserStage.TITLES && library != null && posters != null) {
                     val blocked = playback.running || state.busy
+                    val child = showHistory.lastOrNull().takeIf { library.type == "show" }
+                    val route = child?.let { "show:${it.path}" } ?: "library:${library.key}"
                     val navigation: @Composable () -> Unit = {
                         CollectionNavigationBar(
                             accountName = state.accountName,
                             activeType = library.type,
-                            hasMovies = state.libraries.any { it.type == "movie" },
-                            hasShows = state.libraries.any { it.type == "show" },
+                            movieTitle = collectionLabel("movie"),
+                            showTitle = collectionLabel("show"),
+                            focus = collectionFocus,
                             enabled = !blocked && movieLibrary?.selectedMovie == null,
                             onMovies = { selectCollection("movie") },
                             onShows = { selectCollection("show") },
+                            onDown = { collectionFocus.enterHeader(route) },
                         )
                     }
-                    val child = showHistory.lastOrNull().takeIf { library.type == "show" }
                     if (child == null) {
                         val collection = checkNotNull(if (library.type == "movie") movieLibrary else showLibrary)
                         destinations.SaveableStateProvider("$serverId:${library.type}:${library.key}") {
@@ -84,6 +89,9 @@ class MainActivity : ComponentActivity() {
                                 state = collection,
                                 posters = posters,
                                 navigation = navigation,
+                                focus = collectionFocus,
+                                libraries = state.libraries.filter { it.type == library.type },
+                                onLibrary = ::selectHeaderLibrary,
                                 playbackRunning = blocked,
                                 error = state.error,
                                 onBack = ::showSources,
@@ -101,8 +109,27 @@ class MainActivity : ComponentActivity() {
                                 onBack = ::navigateBack,
                                 onItem = ::selectShowItem,
                                 navigation = navigation,
+                                focus = collectionFocus,
+                                library = library,
+                                libraries = state.libraries.filter { it.type == library.type },
+                                onLibrary = ::selectHeaderLibrary,
                             )
                         }
+                    }
+                    choosingLibraryType?.let { type ->
+                        CollectionLibraryDialog(
+                            libraries = state.libraries.filter { it.type == type },
+                            selectedKey = navigationSelection.libraryFor(state.libraries, type)?.key,
+                            onDismiss = {
+                                choosingLibraryType = null
+                                collectionFocus.confirmTab(type)
+                            },
+                            onChoose = {
+                                choosingLibraryType = null
+                                collectionFocus.confirmTab(type)
+                                selectLibrary(it)
+                            },
+                        )
                     }
                 } else {
                     PlexBrowserScreen(
@@ -256,10 +283,25 @@ class MainActivity : ComponentActivity() {
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
     }
 
+    /** Labels come from resolved libraries, never from type names; routes remain keyed by IDs. */
+    private fun collectionLabel(type: String): String? =
+        (if (type == "movie") movieLibrary?.library else showLibrary?.library)?.title
+            ?: navigationSelection.libraryFor(state.libraries, type)?.title
+            ?: state.libraries.firstOrNull { it.type == type }?.title
+
+    private fun selectHeaderLibrary(library: PlexLibrary) {
+        if (PlaybackMonitor.state.value.running || state.busy) return
+        val child = showHistory.lastOrNull().takeIf {
+            library.type == "show" && activeLibrary?.type == "show" && activeLibrary?.key == library.key
+        }
+        collectionFocus.enterHeader(child?.let { "show:${it.path}" } ?: "library:${library.key}")
+        selectLibrary(library)
+    }
+
     private fun selectCollection(type: String) {
         if (PlaybackMonitor.state.value.running || state.busy || activeLibrary?.type == type) return
         val library = navigationSelection.libraryFor(state.libraries, type)
-        if (library != null) selectLibrary(library) else showSources()
+        if (library != null) selectLibrary(library) else choosingLibraryType = type
     }
 
     /** A shared root card opens the child-only stack; it never opens movie details. */
@@ -394,6 +436,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun closeCollections() {
+        choosingLibraryType = null
         closeMovies()
         closeShows()
         activeLibrary = null

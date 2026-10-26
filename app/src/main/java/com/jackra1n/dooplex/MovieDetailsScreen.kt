@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +53,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -60,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import java.util.Locale
@@ -67,9 +70,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
- * Artwork-led movie destination with fitted Plex title art, source-labelled ratings and formats.
- * Black readability gradients keep the upper/right artwork clear; short hero credits complement
- * the complete synopsis and credits reader. Compact layouts reserve space for every action.
+ * Artwork-led movie destination with fitted Plex title/backdrop art and a two-line hero summary.
+ * Provider badges prefer RT audience; one HDR/audio label is shown while the reader retains detail.
+ * Black readability gradients keep artwork clear; compact layouts reserve space for every action.
  * D-pad Down opens the reader entry point from playback; selecting it focuses the scrollable text.
  * Reader Up/Down reach its return control at either boundary; Back returns to the hero reading link.
  * Metadata refresh never resets focus; removing Retry/Start over returns focus to playback.
@@ -128,6 +131,37 @@ internal fun MovieDetailsScreen(
             movie.audioFormat,
         ).filter { it.isNotBlank() }.joinToString("  ·  ")
     }
+    val heroRatings = remember(movie.ratings) {
+        val valid = movie.ratings.filter { it.value.isFinite() && it.value in 0.0..10.0 }
+        listOfNotNull(
+            valid.firstOrNull { it.source == "IMDb" && it.type == "audience" }
+                ?: valid.firstOrNull { it.source == "IMDb" },
+            valid.firstOrNull { it.source == "Rotten Tomatoes" && it.type == "audience" }
+                ?: valid.firstOrNull { it.source == "Rotten Tomatoes" },
+        )
+    }
+    val heroFormats = remember(movie.videoFormat, movie.audioFormat, movie.videoResolution) {
+        val video = movie.videoFormat.split(" · ")
+        val range = listOf("Dolby Vision", "HDR10+", "HDR10", "HLG", "HDR").firstOrNull { it in video }
+        val resolution = video.firstOrNull { it.isNotBlank() && it !in listOf("Dolby Vision", "HDR10+", "HDR10", "HLG", "HDR") }
+            ?: movie.videoResolution.uppercase(Locale.ROOT).takeIf { it.isNotBlank() }
+        val audio = movie.audioFormat.split(" · ")
+        val audioLabel = when {
+            "Atmos" in audio -> "Atmos"
+            "DTS:X" in audio -> "DTS:X"
+            else -> audio.firstOrNull()?.takeIf { it.isNotBlank() }?.let { codec ->
+                val short = when (codec) {
+                    "Dolby TrueHD" -> "TrueHD"
+                    "Dolby Digital Plus" -> "DD+"
+                    "Dolby Digital" -> "DD"
+                    else -> codec
+                }
+                val channels = audio.lastOrNull()?.takeIf { it != codec }
+                listOfNotNull(short, channels).joinToString(" ")
+            }
+        }
+        listOfNotNull(resolution, range, audioLabel).joinToString("  ·  ")
+    }
     val synopsis = movie.summary.ifBlank { if (loading) "Loading synopsis…" else "No synopsis supplied by Plex." }
     // Capture this before removal can move focus and overwrite the identity of the removed action.
     val focusedActionRemoved = (lastFocus == DetailFocus.Retry && error == null) ||
@@ -182,32 +216,23 @@ internal fun MovieDetailsScreen(
                         verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
                     ) {
                         DetailTitle(movie, posters, enabled, compact, logoHeight)
-                        if (!compact && spacious && genres.isNotBlank()) Text(
-                            genres,
-                            color = CinemaColors.Foreground.copy(alpha = 0.84f),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (metadata.isNotBlank()) Text(
-                            metadata,
-                            color = CinemaColors.Muted,
-                            fontSize = if (compact) 11.sp else 13.sp,
-                            lineHeight = if (compact) 14.sp else 18.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (ratings.isNotBlank()) Text(
-                            ratings,
-                            color = CinemaColors.Foreground,
-                            fontSize = if (compact) 11.sp else 13.sp,
-                            lineHeight = if (compact) 14.sp else 18.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (formats.isNotBlank()) Text(
-                            formats,
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (metadata.isNotBlank()) Text(
+                                metadata,
+                                color = CinemaColors.Muted,
+                                fontSize = if (compact) 11.sp else 13.sp,
+                                lineHeight = if (compact) 14.sp else 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            heroRatings.forEach { DetailRatingBadge(it, compact) }
+                        }
+                        if (heroFormats.isNotBlank()) Text(
+                            heroFormats,
                             color = CinemaColors.Foreground.copy(alpha = 0.86f),
                             fontSize = if (compact) 11.sp else 13.sp,
                             lineHeight = if (compact) 14.sp else 18.sp,
@@ -229,7 +254,7 @@ internal fun MovieDetailsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             CinemaButton(
-                                onClick = { onPlay(false) }, enabled = enabled, selected = true,
+                                onClick = { onPlay(false) }, enabled = enabled, primary = true,
                                 modifier = Modifier.focusRequester(playFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Play }
                                     .focusProperties {
@@ -440,8 +465,8 @@ private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, activ
     )
     Box(Modifier.fillMaxSize().background(Color.Black))
     if (painter != null) Image(
-        painter = painter, contentDescription = null, contentScale = ContentScale.Crop,
-        alignment = Alignment.TopEnd,
+        painter = painter, contentDescription = null, contentScale = ContentScale.Fit,
+        alignment = Alignment.Center,
         modifier = Modifier.fillMaxSize().graphicsLayer { alpha = opacity.value },
     )
     // Only the left text zone needs a side gradient; the upper/right picture remains untouched.
@@ -522,9 +547,35 @@ private fun DetailHeroCredit(label: String, names: String, compact: Boolean) {
     }
 }
 
+/** Provider marks identify the source without repeating long labels in the hero. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DetailRatingBadge(rating: PlexMediaRating, compact: Boolean) {
+    val imdb = rating.source == "IMDb"
+    val score = if (imdb) String.format(Locale.ROOT, "%.1f", rating.value)
+        else "${(rating.value * 10).roundToInt()}%"
+    Row(
+        Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "${rating.source} ${rating.type} $score${if (imdb) " out of 10" else ""}"
+        },
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painterResource(if (imdb) R.drawable.ic_imdb else R.drawable.ic_rotten_tomatoes),
+            contentDescription = null,
+            modifier = if (imdb) Modifier.width(if (compact) 28.dp else 32.dp).height(16.dp)
+                else Modifier.size(if (compact) 15.dp else 17.dp),
+        )
+        Text(score, color = CinemaColors.Foreground, fontSize = if (compact) 11.sp else 13.sp,
+            fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
 /** A vector triangle avoids depending on whichever play glyph happens to exist in the TV font. */
 @Composable
 private fun DetailPlayIcon(compact: Boolean) {
+    val color = LocalContentColor.current
     Box(Modifier.size(if (compact) 12.dp else 15.dp).drawWithCache {
         val triangle = Path().apply {
             moveTo(size.width * 0.18f, 0f)
@@ -532,7 +583,7 @@ private fun DetailPlayIcon(compact: Boolean) {
             lineTo(size.width * 0.18f, size.height)
             close()
         }
-        onDrawBehind { drawPath(triangle, CinemaColors.Foreground) }
+        onDrawBehind { drawPath(triangle, color) }
     })
 }
 
@@ -588,7 +639,7 @@ private fun DetailSection(label: String, text: String, compact: Boolean) {
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailActionText(text: String, compact: Boolean) {
-    Text(text, color = CinemaColors.Foreground, fontSize = if (compact) 13.sp else 16.sp, fontWeight = FontWeight.Medium)
+    Text(text, fontSize = if (compact) 13.sp else 16.sp, fontWeight = FontWeight.Medium)
 }
 
 private fun detailRuntime(milliseconds: Long): String {
