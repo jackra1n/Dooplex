@@ -165,10 +165,11 @@ internal fun ShowsScreen(
 
     LaunchedEffect(state, focus.contentEpoch) {
         if (focus.contentType != "show") return@LaunchedEffect
+        grid.scrollToItem(0)
+        snapshotFlow { grid.layoutInfo.visibleItemsInfo.any { it.index == 1 } }.first { it }
         focusedIndex = 0
         navigationViewportIndex = -1
         enterContent()
-        grid.scrollToItem(0)
         focus.completeContent("show")
     }
     LaunchedEffect(state, focus.navigationType, focus.navigationEpoch) {
@@ -252,8 +253,8 @@ internal fun ShowsScreen(
             }
         }
 
-        LaunchedEffect(focusEpoch, enabled, state.total, state.loading, columns, focus.navigationType, focus.headerRoute) {
-            if (!enabled || focus.navigationType != null || focus.headerRoute?.let { it != route } == true ||
+        LaunchedEffect(focusEpoch, enabled, state.total, state.loading, columns, focus.navigationType, focus.headerRoute, focus.contentType) {
+            if (!enabled || focus.navigationType != null || focus.contentType == "show" || focus.headerRoute?.let { it != route } == true ||
                 !needsFocus && !revealHeader) return@LaunchedEffect
             val epoch = focusEpoch
             if (revealHeader || headerSelected || count == 0) {

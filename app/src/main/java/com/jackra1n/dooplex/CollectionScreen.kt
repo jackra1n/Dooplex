@@ -257,17 +257,20 @@ internal fun CollectionScreen(
         withFrameNanos { }
         focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
+    // A confirmed tab lands on the first poster with the page at its top. The grid must have laid
+    // out first, or the restore below would scroll the "unseen" poster to the top of the screen.
     LaunchedEffect(state, focus.contentEpoch) {
         val type = state.library.type
         if (focus.contentType != type) return@LaunchedEffect
+        grid.scrollToItem(0)
+        snapshotFlow { grid.layoutInfo.visibleItemsInfo.any { it.index == COLLECTION_GRID_HEADER_ITEMS } }.first { it }
         focusedIndex = 0
         pendingFocusIndex = 0
         navigationViewportIndex = -1
         restoreToHeader = false
-        directionalFocus = false
+        directionalFocus = true
         needsFocus = true
         restoreEpoch++
-        grid.scrollToItem(0)
         focus.completeContent(type)
     }
     LaunchedEffect(route, focus.headerEpoch, playbackRunning, modalOpen) {
@@ -315,8 +318,8 @@ internal fun CollectionScreen(
         if (!state.alphabetLoading) railRestorePending = false
     }
     // No focus requests are keyed to page fills, details refreshes, or playback position reports.
-    LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading, focus.navigationType, focus.headerRoute) {
-        if (focus.navigationType != null || focus.headerRoute?.let { it != route } == true ||
+    LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading, focus.navigationType, focus.headerRoute, focus.contentType) {
+        if (focus.navigationType != null || focus.contentType == state.library.type || focus.headerRoute?.let { it != route } == true ||
             playbackRunning || modalOpen || !needsFocus && !restoreToHeader) return@LaunchedEffect
         val focusEpoch = restoreEpoch
         if (restoreToHeader) {
