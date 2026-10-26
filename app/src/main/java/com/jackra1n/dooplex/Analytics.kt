@@ -6,9 +6,11 @@ import android.os.Build
 import android.os.Debug
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.view.FrameMetrics
+import androidx.compose.runtime.mutableStateMapOf
 import java.io.File
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -36,6 +38,14 @@ internal object Analytics {
     private lateinit var handler: Handler
     private lateinit var traceFile: File
     private var tracing = false
+    private val main = Handler(Looper.getMainLooper())
+    private val flags = mutableStateMapOf<String, String>()
+    private var flagText = ""
+    var onFlagsChanged: (() -> Unit)? = null
+
+    /** A development switch set from the PC (analytics/flags), so experiments need no reinstall. */
+    fun flag(name: String, default: Boolean = true): Boolean =
+        flags[name]?.let { it == "1" || it == "true" } ?: default
     private val queue = ConcurrentLinkedQueue<String>()
     private val samples = ConcurrentHashMap<String, Sample>()
     @Volatile private var cause = ""
@@ -93,7 +103,7 @@ internal object Analytics {
         var flushes = 0
         handler.postDelayed(object : Runnable {
             override fun run() {
-                if (frames > 0) event("frames", "count" to frames, "slow" to slow)
+                if (frames > 0) event("frames", "count" to frames, "slow" to slow, "flags" to flagText)
                 frames = 0
                 slow = 0
                 if (++flushes % MEMORY_EVERY == 0) memory()
@@ -174,8 +184,26 @@ internal object Analytics {
         val body = lines.joinToString("\n").toByteArray()
         val reply = post(url, body.size.toLong()) { it.write(body) }
         if (reply == null) lines.takeLast(500).forEach { queue += it }
-        // The receiver answers "trace <seconds>" when a CPU trace was requested with `mise run trace`.
-        reply?.takeIf { it.startsWith("trace ") }?.removePrefix("trace ")?.trim()?.toIntOrNull()?.let { trace(it.coerceIn(1, 60)) }
+        // The receiver answers "trace <seconds>" after `mise run trace`, and always "flags ..." for experiments.
+        reply?.lineSequence()?.forEach { line ->
+            when {
+                line.startsWith("trace ") -> line.removePrefix("trace ").trim().toIntOrNull()?.let { trace(it.coerceIn(1, 60)) }
+                line.startsWith("flags") -> applyFlags(line.removePrefix("flags").trim())
+            }
+        }
+    }
+
+    private fun applyFlags(text: String) {
+        if (text == flagText) return
+        flagText = text
+        val parsed = text.split(',').mapNotNull { it.split('=').takeIf { pair -> pair.size == 2 } }
+            .associate { (key, value) -> key.trim() to value.trim() }
+        event("flags", "values" to text)
+        main.post {
+            flags.clear()
+            flags.putAll(parsed)
+            onFlagsChanged?.invoke()
+        }
     }
 
     /** ART's sampling profiler: every thread's stack each millisecond, uploaded for tools/trace-report.py. */

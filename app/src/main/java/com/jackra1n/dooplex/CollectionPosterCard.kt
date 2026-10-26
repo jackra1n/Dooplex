@@ -76,7 +76,7 @@ internal fun CollectionPosterCard(
         }.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).then(if (Analytics.flag("cardclip")) Modifier.clip(shape) else Modifier)
             .background(CinemaColors.Panel)
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
             .drawWithCache {

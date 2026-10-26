@@ -203,8 +203,18 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         return bitmap
     }
 
+    /** Drops decoded posters, so an experiment that changes how they are stored applies to every card. */
+    fun clearMemory() = synchronized(lock) {
+        memory.clear()
+        memoryBytes = 0L
+    }
+
     // A hardware bitmap uploads here, off the render thread, instead of on its first drawn frame.
     private fun toGpu(decoded: Bitmap): Bitmap {
+        if (!Analytics.flag("hwbitmaps")) {
+            decoded.prepareToDraw()
+            return decoded
+        }
         val hardware = try {
             decoded.copy(Bitmap.Config.HARDWARE, false)
         } catch (_: RuntimeException) {

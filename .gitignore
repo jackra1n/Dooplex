@@ -16,3 +16,4 @@ local.properties
 /crashes/
 /analytics/
 /traces/
+__pycache__/

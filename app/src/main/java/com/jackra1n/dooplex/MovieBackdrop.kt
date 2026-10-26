@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -104,6 +105,10 @@ internal fun MovieBackdrop(
         currentImage = over
         fade.snapTo(0f)
         fade.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
+    }
+    if (!Analytics.flag("wash")) {
+        Box(modifier.background(CinemaColors.Canvas))
+        return
     }
     Box(modifier.onSizeChanged { screen = it }) {
         // Both washes are opaque, so the old one stays whole underneath while the new one fades in.
