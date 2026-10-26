@@ -12,7 +12,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -1002,7 +1001,7 @@ private fun CollectionSortDialog(current: CollectionSort, onDismiss: () -> Unit,
                 Modifier.padding(top = 70.dp).widthIn(max = 340.dp).fillMaxWidth()
                     .clip(RoundedCornerShape(30.dp))
                     .background(Brush.verticalGradient(listOf(CinemaColors.Panel.copy(alpha = 0.98f), CinemaColors.Canvas.copy(alpha = 0.98f))))
-                    .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.075f), RoundedCornerShape(30.dp))
+                    .glassRim(30.dp)
                     .padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {

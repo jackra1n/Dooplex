@@ -1,8 +1,7 @@
 package com.jackra1n.dooplex
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,10 +17,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
@@ -30,14 +31,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.LocalContentColor
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-internal object CinemaControlColors {
-    val Surface = Color.Black.copy(alpha = 0.45f)
-    val Outline = CinemaColors.Foreground.copy(alpha = 0.16f)
-    val Active = CinemaColors.Foreground.copy(alpha = 0.13f)
-    val Focus = CinemaColors.Foreground
-}
-
-/** One flat-glass treatment: light primary/focus, dark secondary, no painted grey sheen. */
+/** Dark glass at rest; focus lifts a light face with a soft shadow, primary actions stay light. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CinemaButton(
@@ -50,31 +44,39 @@ internal fun CinemaButton(
 ) {
     var focused by remember { mutableStateOf(false) }
     val light = focused || primary
-    val contentColor = if (light) Color.Black else CinemaColors.Foreground
-    val surface = if (light) CinemaControlColors.Focus else CinemaControlColors.Surface
     val shape = RoundedCornerShape(50)
-    val scale = animateFloatAsState(
-        targetValue = if (focused) 1.025f else 1f,
-        animationSpec = tween(160),
-        label = "control focus",
-    )
-    CompositionLocalProvider(LocalContentColor provides contentColor) {
+    val lift = animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 1f, stiffness = 320f), label = "control focus")
+    val face = animateFloatAsState(if (light) 1f else 0f, spring(dampingRatio = 1f, stiffness = 320f), label = "control face")
+    CompositionLocalProvider(LocalContentColor provides if (light) Glass.Ink else CinemaColors.Foreground) {
         Row(
             modifier = modifier
                 .onFocusChanged { focused = it.isFocused }
                 .graphicsLayer {
-                    scaleX = scale.value
-                    scaleY = scale.value
+                    val scale = 1f + 0.07f * lift.value
+                    scaleX = scale
+                    scaleY = scale
                     alpha = if (enabled) 1f else 0.45f
+                    shadowElevation = lift.value * 10.dp.toPx()
+                    ambientShadowColor = Color.Black
+                    spotShadowColor = Color.Black
+                    this.shape = shape
+                    clip = true
                 }
-                .clip(shape)
                 .drawWithCache {
+                    val radius = size.height / 2
+                    val idle = Brush.verticalGradient(listOf(Glass.ControlTop, Glass.ControlBottom))
+                    val lit = Brush.verticalGradient(listOf(Glass.LightTop, Glass.LightBottom))
+                    val rim = litRim(0f, size.height, radius, Glass.ControlRim)
                     onDrawBehind {
-                        drawRect(surface)
-                        if (selected && !light) drawRect(CinemaControlColors.Active)
+                        val amount = face.value
+                        if (amount < 1f) {
+                            drawRect(idle)
+                            if (selected) drawRect(Glass.Plate)
+                            drawRim(rim, Offset.Zero, size, radius, 1f - amount)
+                        }
+                        if (amount > 0f) drawRect(lit, alpha = amount)
                     }
                 }
-                .border(0.5.dp, if (light) CinemaControlColors.Focus else CinemaControlColors.Outline, shape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -85,7 +87,7 @@ internal fun CinemaButton(
                 .defaultMinSize(minHeight = 46.dp)
                 .padding(PaddingValues(horizontal = 20.dp, vertical = 11.dp)),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
     }

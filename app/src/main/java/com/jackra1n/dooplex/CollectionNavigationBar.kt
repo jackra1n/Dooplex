@@ -1,15 +1,15 @@
 package com.jackra1n.dooplex
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -47,16 +48,19 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -65,6 +69,7 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import kotlinx.coroutines.launch
 
 /**
  * Parent-owned focus intent outlives route composition and persistence work. Tab confirmation never
@@ -113,10 +118,10 @@ internal class CollectionFocusState {
 }
 
 /**
- * One quiet collection track: the route marker persists independently of the bright focus pill.
+ * A centred glass track: the current route keeps a translucent plate, focus slides a light pill over it.
  * Stable parent-owned requesters reattach when lazy headers scroll or destinations change.
  * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
- * Labels set tab widths within per-tab/track caps; highlight position and width animate draw-only.
+ * Sizes follow plx-native's 1920-wide layout scaled to this screen; capsules animate draw-only.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -144,146 +149,177 @@ internal fun CollectionNavigationBar(
             "show" -> focus.showTab.requestFocus()
         }
     }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val compact = maxWidth < 720.dp
-        val showPeripheral = maxWidth >= 480.dp
-        val availableTrack = maxWidth * if (showPeripheral) 0.62f else 1f
-        val density = LocalDensity.current
-        val textMeasurer = rememberTextMeasurer()
-        val labelStyle = LocalTextStyle.current.copy(
-            fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.Medium,
-        )
-        val maxTabWidth = 320.dp.coerceAtMost(
-            ((availableTrack - 8.dp) / tabs.size.coerceAtLeast(1)).coerceAtLeast(0.dp),
-        )
-        val tabWidths = remember(tabs, textMeasurer, labelStyle, density, maxTabWidth) {
-            with(density) {
-                val padding = 24.dp.roundToPx()
-                val maximum = maxTabWidth.roundToPx()
-                FloatArray(tabs.size) { index ->
-                    (textMeasurer.measure(
-                        text = tabs[index].second, style = labelStyle,
-                        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
-                        constraints = Constraints(maxWidth = (maximum - padding).coerceAtLeast(0)),
-                    ).size.width + padding).coerceAtMost(maximum).toFloat()
-                }
-            }
+    val density = LocalDensity.current
+    val unit = LocalConfiguration.current.screenWidthDp.dp / 1920f
+    val unitPx = with(density) { unit.toPx() }
+    val pillHeight = 60 * unitPx
+    val pad = 8 * unitPx
+    val gap = 16 * unitPx
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = LocalTextStyle.current.copy(fontSize = with(density) { (unit * 28).toSp() })
+    val tabWidths = remember(tabs, textMeasurer, labelStyle, unitPx) {
+        val padding = 36 * unitPx
+        val maximum = 420 * unitPx
+        FloatArray(tabs.size) { index ->
+            // Bold is the widest face, so a pill never resizes when its label changes weight.
+            (textMeasurer.measure(
+                text = tabs[index].second, style = labelStyle.copy(fontWeight = FontWeight.Bold),
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                constraints = Constraints(maxWidth = (maximum - padding).toInt().coerceAtLeast(0)),
+            ).size.width + padding).coerceAtMost(maximum)
         }
-        val tabOffsets = remember(tabWidths) {
-            var offset = 0f
-            FloatArray(tabWidths.size) { index -> offset.also { offset += tabWidths[index] } }
+    }
+    val tabOffsets = remember(tabWidths, gap) {
+        var offset = 0f
+        FloatArray(tabWidths.size) { index -> offset.also { offset += tabWidths[index] + gap } }
+    }
+    val activeIndex = tabs.indexOfFirst { it.first == activeType }
+    val focusIndex = tabs.indexOfFirst { it.first == focusedType }
+    val selection = rememberCapsule(activeIndex, tabOffsets, tabWidths)
+    val highlight = rememberCapsule(focusIndex, tabOffsets, tabWidths)
+    Row(
+        Modifier.fillMaxWidth().padding(top = unit * 54, bottom = unit * 40),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            AccountChip(accountName, unit, labelStyle)
         }
-        val activeIndex = tabs.indexOfFirst { it.first == activeType }
-        val focusIndex = tabs.indexOfFirst { it.first == focusedType }
-        val targetIndex = focusIndex.takeIf { it >= 0 } ?: activeIndex.coerceAtLeast(0)
-        val focusOffset = animateFloatAsState(
-            targetValue = tabOffsets.getOrElse(targetIndex) { 0f },
-            animationSpec = tween(130), label = "collection focus position",
-        )
-        val focusWidth = animateFloatAsState(
-            targetValue = tabWidths.getOrElse(targetIndex) { 0f },
-            animationSpec = tween(130), label = "collection focus width",
-        )
-        val showFocus = focusIndex >= 0
-        Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (showPeripheral) Text("DOOPLEX", color = CinemaColors.Accent,
-                    fontSize = if (compact) 13.sp else 16.sp, fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp, maxLines = 1, overflow = TextOverflow.Clip)
-            }
-            if (tabs.isNotEmpty()) {
-                val shape = RoundedCornerShape(50)
-                Row(
-                    Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
-                        .background(CinemaControlColors.Surface, shape)
-                        .border(0.5.dp, CinemaControlColors.Outline, shape)
-                        .padding(4.dp)
-                        .drawWithCache {
-                            val radius = CornerRadius(size.height / 2f)
-                            onDrawBehind {
-                                if (activeIndex >= 0) drawRoundRect(
-                                    CinemaControlColors.Active,
-                                    topLeft = Offset(tabOffsets[activeIndex], 0f),
-                                    size = Size(tabWidths[activeIndex], size.height),
-                                    cornerRadius = radius,
-                                )
-                                if (showFocus) drawRoundRect(
-                                    CinemaControlColors.Focus, topLeft = Offset(focusOffset.value, 0f),
-                                    size = Size(focusWidth.value, size.height), cornerRadius = radius,
-                                )
-                            }
-                        }.focusGroup(),
-                ) {
-                    tabs.forEachIndexed { index, (type, label) ->
-                        Box(
-                            Modifier.width(with(density) { tabWidths[index].toDp() }).height(46.dp)
-                                .focusRequester(if (type == "movie") focus.movieTab else focus.showTab)
-                                .onPreviewKeyEvent { event ->
-                                    when (event.key) {
-                                        Key.DirectionDown -> {
-                                            if (enabled && event.type == KeyEventType.KeyDown) onDown()
-                                            true
-                                        }
-                                        Key.DirectionUp -> true
-                                        Key.DirectionLeft, Key.DirectionRight -> {
-                                            if (enabled && event.type == KeyEventType.KeyDown) {
-                                                val current = tabs.indexOfFirst { it.first == focus.navigationType }
-                                                    .takeIf { it >= 0 } ?: index
-                                                val next = (current + if (event.key == Key.DirectionRight) 1 else -1)
-                                                    .coerceIn(0, tabs.lastIndex)
-                                                focus.moveTab(tabs[next].first)
-                                            }
-                                            true
-                                        }
-                                        else -> false
-                                    }
-                                }.onFocusChanged {
-                                    if (it.isFocused) {
-                                        focusedType = type
-                                        focus.focusTab(type)
-                                    } else if (focusedType == type) focusedType = null
-                                }
-                                .semantics { selected = activeType == type }
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null, role = Role.Tab,
-                                    onClick = {
-                                        if (enabled) {
-                                            focus.confirmTab(type)
-                                            if (type == "movie") onMovies() else onShows()
-                                        }
-                                    },
-                                ).padding(horizontal = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(label, color = CinemaColors.Foreground,
-                                style = labelStyle,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            // Invert only the glyphs actually under the moving light pill. Both the
-                            // departing and arriving labels retain contrast throughout translation.
-                            Text(label, color = CinemaColors.Canvas,
-                                style = labelStyle,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clearAndSetSemantics {}.drawWithContent {
-                                    if (showFocus) {
-                                        val left = focusOffset.value - tabOffsets[index] - (tabWidths[index] - size.width) / 2f
-                                        val clipLeft = left.coerceAtLeast(0f)
-                                        val clipRight = (left + focusWidth.value).coerceAtMost(size.width)
-                                        if (clipRight > clipLeft) clipRect(left = clipLeft, right = clipRight) {
-                                            this@drawWithContent.drawContent()
-                                        }
-                                    }
-                                })
+        if (tabs.isNotEmpty()) Row(
+            Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+                .glassTrack()
+                .drawWithCache {
+                    val pill = CornerRadius(pillHeight / 2)
+                    val plateRim = litRim(pad, pillHeight, pillHeight / 2)
+                    onDrawBehind {
+                        val plate = selection.alpha.value
+                        if (plate > 0f) {
+                            val topLeft = Offset(pad + selection.x.value, pad)
+                            val plateSize = Size(selection.width.value, pillHeight)
+                            drawRoundRect(Glass.Plate, topLeft, plateSize, pill, alpha = plate)
+                            drawRim(plateRim, topLeft, plateSize, pillHeight / 2, plate)
                         }
+                        val light = highlight.alpha.value
+                        if (light > 0f) drawRoundRect(
+                            Glass.Light, Offset(pad + highlight.x.value, pad),
+                            Size(highlight.width.value, pillHeight), pill, alpha = light,
+                        )
                     }
                 }
+                .padding(with(density) { pad.toDp() })
+                .focusGroup(),
+            horizontalArrangement = Arrangement.spacedBy(with(density) { gap.toDp() }),
+        ) {
+            tabs.forEachIndexed { index, (type, label) ->
+                val isActive = index == activeIndex
+                val style = labelStyle.copy(
+                    fontWeight = if (isActive || index == focusIndex) FontWeight.Bold else FontWeight.Normal,
+                )
+                Box(
+                    Modifier.width(with(density) { tabWidths[index].toDp() })
+                        .height(with(density) { pillHeight.toDp() })
+                        .focusRequester(if (type == "movie") focus.movieTab else focus.showTab)
+                        .onPreviewKeyEvent { event ->
+                            when (event.key) {
+                                Key.DirectionDown -> {
+                                    if (enabled && event.type == KeyEventType.KeyDown) onDown()
+                                    true
+                                }
+                                Key.DirectionUp -> true
+                                Key.DirectionLeft, Key.DirectionRight -> {
+                                    if (enabled && event.type == KeyEventType.KeyDown) {
+                                        val current = tabs.indexOfFirst { it.first == focus.navigationType }
+                                            .takeIf { it >= 0 } ?: index
+                                        val next = (current + if (event.key == Key.DirectionRight) 1 else -1)
+                                            .coerceIn(0, tabs.lastIndex)
+                                        focus.moveTab(tabs[next].first)
+                                    }
+                                    true
+                                }
+                                else -> false
+                            }
+                        }.onFocusChanged {
+                            if (it.isFocused) {
+                                focusedType = type
+                                focus.focusTab(type)
+                            } else if (focusedType == type) focusedType = null
+                        }
+                        .semantics { selected = activeType == type }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null, role = Role.Tab,
+                            onClick = {
+                                if (enabled) {
+                                    focus.confirmTab(type)
+                                    if (type == "movie") onMovies() else onShows()
+                                }
+                            },
+                        ).padding(horizontal = unit * 18),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, color = if (isActive) Glass.Light else Glass.IdleInk,
+                        style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Dark ink only where the light pill covers the glyphs, so a label can split mid-slide.
+                    Text(label, color = Glass.Ink, style = style,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clearAndSetSemantics {}.drawWithContent {
+                            if (highlight.alpha.value > INK_FLIP_ALPHA) {
+                                val left = highlight.x.value - tabOffsets[index] - (tabWidths[index] - size.width) / 2f
+                                val clipLeft = left.coerceAtLeast(0f)
+                                val clipRight = (left + highlight.width.value).coerceAtMost(size.width)
+                                if (clipRight > clipLeft) clipRect(left = clipLeft, right = clipRight) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                        })
+                }
             }
-            Box(Modifier.weight(1f).padding(start = if (showPeripheral) 12.dp else 0.dp),
-                contentAlignment = Alignment.CenterEnd) {
-                if (showPeripheral) Text(accountName, color = CinemaColors.Muted,
-                    fontSize = if (compact) 13.sp else 16.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        }
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+private const val INK_FLIP_ALPHA = 0.15f
+private val CapsuleMove = spring<Float>(dampingRatio = 1f, stiffness = 240f)
+private val CapsuleFade = spring<Float>(dampingRatio = 1f, stiffness = 300f)
+
+private class Capsule(x: Float, width: Float, alpha: Float) {
+    val x = Animatable(x)
+    val width = Animatable(width)
+    val alpha = Animatable(alpha)
+}
+
+/** Glides between tabs while visible; a capsule that is fading in starts at its target instead. */
+@Composable
+private fun rememberCapsule(index: Int, offsets: FloatArray, widths: FloatArray): Capsule {
+    val capsule = remember {
+        Capsule(offsets.getOrElse(index) { 0f }, widths.getOrElse(index) { 0f }, if (index >= 0) 1f else 0f)
+    }
+    LaunchedEffect(index, offsets, widths) {
+        if (index !in offsets.indices) {
+            capsule.alpha.animateTo(0f, CapsuleFade)
+            return@LaunchedEffect
+        }
+        if (capsule.alpha.value < 0.02f) {
+            capsule.x.snapTo(offsets[index])
+            capsule.width.snapTo(widths[index])
+        }
+        launch { capsule.x.animateTo(offsets[index], CapsuleMove) }
+        launch { capsule.width.animateTo(widths[index], CapsuleMove) }
+        capsule.alpha.animateTo(1f, CapsuleFade)
+    }
+    return capsule
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AccountChip(accountName: String, unit: Dp, labelStyle: TextStyle) {
+    val initial = accountName.trim().take(1).uppercase()
+    Box(
+        Modifier.size(unit * 76).glassTrack().semantics { contentDescription = "Signed in as $accountName" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(unit * 60).background(Glass.Plate, CircleShape), contentAlignment = Alignment.Center) {
+            Text(initial, color = Glass.Light, style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1)
         }
     }
 }
@@ -335,8 +371,8 @@ internal fun CollectionLibraryDialog(
         Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopCenter) {
             Column(
                 Modifier.padding(top = 80.dp).widthIn(max = 520.dp).fillMaxWidth()
-                    .background(CinemaColors.Canvas, RoundedCornerShape(22.dp)).padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .background(CinemaColors.Canvas, RoundedCornerShape(22.dp)).glassRim(22.dp)
+                    .verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("Choose a library", color = CinemaColors.Foreground, fontSize = 22.sp,
