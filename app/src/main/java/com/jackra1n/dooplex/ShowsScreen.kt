@@ -178,7 +178,6 @@ internal fun ShowsScreen(
         val artworkWidth = artworkBucket(with(density) { ((maxWidth - horizontalEdge * 2 - 18.dp * (columns - 1)) / columns).toPx() })
         val count = if (state.total > 0) state.total else if (state.loading) columns * 2 else 0
         val noun = when (state.level) {
-            ShowBrowseLevel.SHOWS -> "show"
             ShowBrowseLevel.SEASONS -> "season"
             ShowBrowseLevel.EPISODES -> "episode"
         }
@@ -267,8 +266,22 @@ internal fun ShowsScreen(
                         headerMounted = true
                         onDispose { headerMounted = false }
                     }
-                    Column(
-                        Modifier.fillMaxWidth().onFocusChanged {
+                    CollectionHeaderChrome(
+                        title = state.title,
+                        subtitle = if (episodes) "Episodes" else "Seasons",
+                        count = if (state.total == 0 && state.loading) "Loading ${noun}s…" else
+                            "${state.total} $noun${if (state.total == 1) "" else "s"}${if (state.loading) " · Loading…" else ""}",
+                        hint = null,
+                        navigation = navigation,
+                        compact = compact,
+                        enabled = enabled,
+                        backFocus = backFocus,
+                        onBack = onBack,
+                        backLabel = "‹  Back",
+                        actions = {
+                            if (state.error != null) CinemaButton(onClick = state::retry, enabled = enabled) { ShowControlText("Retry") }
+                        },
+                        modifier = Modifier.fillMaxWidth().onFocusChanged {
                             if (it.hasFocus && !needsFocus) {
                                 headerSelected = true
                                 if (enabled && grid.canScrollBackward && !revealHeader) {
@@ -289,27 +302,13 @@ internal fun ShowsScreen(
                                 focusEpoch++
                             }
                             false
-                        }.focusGroup().padding(bottom = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 18.dp),
-                    ) {
-                        navigation()
-                        Row(Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                        }.focusGroup().onPreviewKeyEvent { event ->
                             if (enabled && event.key == Key.DirectionDown && count > 0) {
                                 if (event.type == KeyEventType.KeyDown) moveFocus((focusedIndex % columns).coerceAtMost(count - 1))
                                 true
                             } else false
-                        }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            CinemaButton(onClick = onBack, enabled = enabled, modifier = Modifier.focusRequester(backFocus)) {
-                                ShowControlText(if (state.level == ShowBrowseLevel.SHOWS) "Sources" else "Back")
-                            }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(state.title, color = CinemaColors.Foreground, fontSize = if (compact) 23.sp else 32.sp,
-                                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(if (state.total == 0 && state.loading) "Loading ${noun}s…" else "${state.total} $noun${if (state.total == 1) "" else "s"}${if (state.loading) " · Loading…" else ""}",
-                                    color = CinemaColors.Muted, fontSize = 14.sp, maxLines = 1)
-                            }
-                            if (state.error != null) CinemaButton(onClick = state::retry, enabled = enabled) { ShowControlText("Retry") }
-                        }
+                        },
+                    ) {
                         val message = error ?: state.error
                         if (message != null) Text(message, color = CinemaColors.Error, fontSize = 14.sp, maxLines = 3,
                             overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })

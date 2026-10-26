@@ -19,18 +19,21 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
- * Main-thread-confined, bounded movie window: 96 titles/page, at most 12 pages and two requests.
+ * Main-thread-confined, bounded movie/show window: 96 titles/page, at most 12 pages and two requests.
  * Cancelled work retains its request slot until its IO has unwound. Query changes discard old pages;
  * alphabet counts follow the filter, not the sort, and use a separate revision to reject stale work.
  * Jumps publish repeatable title-sort events only after page totals agree with server bucket counts.
  * Playback refreshes preserve the viewport generation while invalidating Unwatched membership/counts.
  */
 @Stable
-class MovieLibraryState(
+class CollectionLibraryState(
     val library: PlexLibrary,
     val connection: PlexConnection,
     parentScope: CoroutineScope,
 ) {
+    val isShow: Boolean = library.type == "show"
+    val title: String get() = if (isShow) "Shows" else "Movies"
+    val noun: String get() = if (isShow) "show" else "movie"
     val pageSize: Int = 96
     var total by mutableIntStateOf(0)
         private set
@@ -38,8 +41,8 @@ class MovieLibraryState(
         private set
     var error by mutableStateOf<String?>(null)
         private set
-    private var currentSort by mutableStateOf(MovieSort.TITLE)
-    val sort: MovieSort get() = currentSort
+    private var currentSort by mutableStateOf(CollectionSort.TITLE)
+    val sort: CollectionSort get() = currentSort
     private var unwatchedFilter by mutableStateOf(false)
     val unwatchedOnly: Boolean get() = unwatchedFilter
     var generation by mutableIntStateOf(0)
@@ -50,13 +53,13 @@ class MovieLibraryState(
         private set
     var detailsError by mutableStateOf<String?>(null)
         private set
-    var alphabet by mutableStateOf<List<MovieLetter>>(emptyList())
+    var alphabet by mutableStateOf<List<CollectionLetter>>(emptyList())
         private set
     var alphabetLoading by mutableStateOf(true)
         private set
     var alphabetError by mutableStateOf<String?>(null)
         private set
-    var jumpRequest by mutableStateOf<MovieJump?>(null)
+    var jumpRequest by mutableStateOf<CollectionJump?>(null)
         private set
 
     private val lifetime = SupervisorJob(parentScope.coroutineContext[Job])
@@ -98,7 +101,7 @@ class MovieLibraryState(
     private data class PageWork(
         override val epoch: Int,
         val page: Int,
-        val sort: MovieSort,
+        val sort: CollectionSort,
         val unwatched: Boolean,
         val metadataRevision: Long,
     ) : Work
@@ -120,6 +123,7 @@ class MovieLibraryState(
     private data class MetadataOverride(val item: PlexBrowseItem, val revision: Long)
 
     init {
+        require(library.type == "movie" || isShow) { "A movie or show library is required." }
         pump()
     }
 
@@ -145,7 +149,7 @@ class MovieLibraryState(
         pump()
     }
 
-    fun setSort(sort: MovieSort) {
+    fun setSort(sort: CollectionSort) {
         if (closed || this.sort == sort) return
         currentSort = sort
         resetQuery()
@@ -160,10 +164,15 @@ class MovieLibraryState(
 
     fun jumpToLetter(key: String) {
         if (closed || alphabet.none { it.key == key && it.count > 0 }) return
-        if (sort != MovieSort.TITLE) setSort(MovieSort.TITLE)
+        if (sort != CollectionSort.TITLE) setSort(CollectionSort.TITLE)
         pendingJump = key
         publishPendingJump()
         pump()
+    }
+
+    /** Consume only the completed animation; root/tab returns must not replay an old letter jump. */
+    fun completeJump(id: Long) {
+        if (jumpRequest?.id == id) jumpRequest = null
     }
 
     fun retryAlphabet() {
@@ -187,6 +196,7 @@ class MovieLibraryState(
     }
 
     fun selectMovie(movie: PlexBrowseItem) {
+        if (isShow) return
         if (closed) return
         detailsVersion++
         selectedMovie = cachedMovie(movie.ratingKey) ?: movie
@@ -218,7 +228,7 @@ class MovieLibraryState(
         pump()
     }
 
-    fun refreshMovie(ratingKey: String) {
+    fun refreshItem(ratingKey: String) {
         if (closed) return
         queueRefresh(ratingKey)
         pump()
@@ -304,14 +314,14 @@ class MovieLibraryState(
 
     private fun publishPendingJump() {
         val key = pendingJump ?: return
-        if (sort != MovieSort.TITLE || !totalReady || !alphabetReady || alphabetLoading) return
+        if (sort != CollectionSort.TITLE || !totalReady || !alphabetReady || alphabetLoading) return
         val letter = alphabet.firstOrNull { it.key == key && it.count > 0 } ?: return
         pendingJump = null
         jumpPrefetchPage = letter.start / pageSize
         firstIndex = letter.start
         lastIndex = letter.start
         updateWindow()
-        jumpRequest = MovieJump(++jumpId, letter.start)
+        jumpRequest = CollectionJump(++jumpId, letter.start)
     }
 
     private fun updateWindow() {
@@ -406,12 +416,12 @@ class MovieLibraryState(
     }
 
     private suspend fun loadPage(work: PageWork) {
-        val page = client.moviePage(library.key, work.page * pageSize, pageSize, work.sort, work.unwatched)
+        val page = client.collectionPage(library.key, library.type, work.page * pageSize, pageSize, work.sort, work.unwatched)
         currentCoroutineContext().ensureActive()
         if (!isCurrent(work)) return
         val expectedCount = (page.total.toLong() - page.start).coerceIn(0, pageSize.toLong()).toInt()
         if (page.start != work.page * pageSize || page.items.size != expectedCount) {
-            throw IOException("Plex returned inconsistent movie page information.")
+            throw IOException("Plex returned inconsistent collection page information.")
         }
         val needsMerge = page.items.any { item ->
             (overrides[item.ratingKey]?.revision ?: 0) > work.metadataRevision
@@ -431,7 +441,7 @@ class MovieLibraryState(
     }
 
     private suspend fun loadAlphabet(work: AlphabetWork) {
-        val letters = client.movieAlphabet(library.key, work.unwatched)
+        val letters = client.collectionAlphabet(library.key, library.type, work.unwatched)
         currentCoroutineContext().ensureActive()
         if (!isCurrent(work)) return
         alphabet = letters
@@ -442,7 +452,7 @@ class MovieLibraryState(
     }
 
     private suspend fun loadMetadata(work: MetadataWork) {
-        val movie = client.movieDetails(work.ratingKey)
+        val movie = if (isShow) client.showMetadata(work.ratingKey) else client.movieDetails(work.ratingKey)
         currentCoroutineContext().ensureActive()
         if (!isCurrent(work) || metadataVersions[work.ratingKey] != work.version) return
         val previous = cachedMovie(movie.ratingKey) ?: selectedMovie?.takeIf { it.ratingKey == movie.ratingKey }
@@ -515,7 +525,7 @@ class MovieLibraryState(
         else work.epoch == epoch
 
     private fun recordFailure(work: Work, failure: Exception) {
-        val message = if (failure is IOException) failure.message ?: "Plex could not load the movies." else "Plex could not load the movies."
+        val message = if (failure is IOException) failure.message ?: "Plex could not load the collection." else "Plex could not load the collection."
         when (work) {
             is PageWork -> pageFailures[work.page] = message
             is MetadataWork -> if (metadataVersions[work.ratingKey] == work.version) {

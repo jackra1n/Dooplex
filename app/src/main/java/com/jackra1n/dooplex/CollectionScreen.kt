@@ -101,14 +101,14 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private const val MOVIE_GRID_HEADER_ITEMS = 1
+private const val COLLECTION_GRID_HEADER_ITEMS = 1
 
-private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
+private suspend fun LazyGridState.scrollToCollectionLetter(index: Int) {
     snapshotFlow { layoutInfo.totalItemsCount }.first { it > index }
     scroll {
-        val scope = LazyLayoutScrollScope(this@scrollToMovieLetter, this)
+        val scope = LazyLayoutScrollScope(this@scrollToCollectionLetter, this)
         val viewport = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).toFloat()
-        val cardHeight = layoutInfo.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
+        val cardHeight = layoutInfo.visibleItemsInfo.firstOrNull { it.index >= COLLECTION_GRID_HEADER_ITEMS }
             ?.size?.height?.toFloat() ?: viewport / 2
         val travel = minOf(viewport * 0.65f, cardHeight * 0.9f).coerceAtLeast(1f)
         var distance = scope.calculateDistanceTo(index).toFloat()
@@ -133,7 +133,7 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
 
 /**
  * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
- * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
+ * Movie details, show children, playback and tab returns retain the viewport and selected card.
  * Vertical DPAD targets retain their column and take focus when visible, without waiting for scroll completion.
  * Directional reveals own scrolling until completion so early focus cannot replace their animation.
  * Header focus reveals all chrome and top spacing, not just the active control's minimum bounds.
@@ -141,14 +141,15 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun MoviesScreen(
-    state: MovieLibraryState,
+fun CollectionScreen(
+    state: CollectionLibraryState,
     posters: PosterRepository,
     navigation: @Composable () -> Unit,
     playbackRunning: Boolean,
     error: String?,
     onBack: () -> Unit,
     onPlay: (PlexBrowseItem, Boolean) -> Unit,
+    onOpenShow: (PlexBrowseItem) -> Unit,
 ) {
     val grid = rememberLazyGridState()
     // Only the scroll start/stop boundary invalidates artwork gates, never the pixel offset.
@@ -243,10 +244,11 @@ fun MoviesScreen(
         val jump = state.jumpRequest ?: return@LaunchedEffect
         focusedIndex = jump.index
         restoreToHeader = false
-        grid.scrollToMovieLetter(jump.index + MOVIE_GRID_HEADER_ITEMS)
+        grid.scrollToCollectionLetter(jump.index + COLLECTION_GRID_HEADER_ITEMS)
         awaitingJump = false
         pendingFocusIndex = null
         if (returnAfterJump || !railHasFocus && !railRestorePending) restoreGrid()
+        state.completeJump(jump.id)
     }
     LaunchedEffect(playbackRunning) {
         if (wasPlaying && !playbackRunning) {
@@ -280,7 +282,7 @@ fun MoviesScreen(
             }
         } else if (state.total > 0 || state.loading) {
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
-            val gridIndex = target + MOVIE_GRID_HEADER_ITEMS
+            val gridIndex = target + COLLECTION_GRID_HEADER_ITEMS
             coroutineScope {
                 val layout = grid.layoutInfo
                 val visible = layout.visibleItemsInfo.firstOrNull { it.index == gridIndex }
@@ -290,11 +292,11 @@ fun MoviesScreen(
                     val above = visible?.let { it.offset.y < layout.viewportStartOffset } ?: !below
                     if (above || below) {
                         val cardHeight = visible?.size?.height ?: layout.visibleItemsInfo
-                            .firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }?.size?.height
+                            .firstOrNull { it.index >= COLLECTION_GRID_HEADER_ITEMS }?.size?.height
                             ?: (layout.viewportEndOffset - layout.viewportStartOffset)
                         val offset = if (below) -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
                         // Animate the row leader: lazy-grid overshoot checks compare against its first index.
-                        val rowStart = MOVIE_GRID_HEADER_ITEMS + target / layout.maxSpan * layout.maxSpan
+                        val rowStart = COLLECTION_GRID_HEADER_ITEMS + target / layout.maxSpan * layout.maxSpan
                         launch { grid.animateScrollToItem(rowStart, offset) }
                     }
                 } else if (visible == null) {
@@ -369,7 +371,7 @@ fun MoviesScreen(
 
         fun enterAlphabet() {
             lastRailKey = lastRailKey?.takeIf { it in railRequesters }
-                ?: (if (state.sort == MovieSort.TITLE) alphabet.lastOrNull { it.start <= focusedIndex }?.key else null)
+                ?: (if (state.sort == CollectionSort.TITLE) alphabet.lastOrNull { it.start <= focusedIndex }?.key else null)
                 ?: alphabet.firstOrNull()?.key
             needsFocus = false
             pendingFocusIndex = null
@@ -398,12 +400,12 @@ fun MoviesScreen(
             var forward = true
             snapshotFlow {
                 val visible = grid.layoutInfo.visibleItemsInfo
-                val firstMovie = visible.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
-                val lastMovie = visible.lastOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
+                val firstMovie = visible.firstOrNull { it.index >= COLLECTION_GRID_HEADER_ITEMS }
+                val lastMovie = visible.lastOrNull { it.index >= COLLECTION_GRID_HEADER_ITEMS }
                 if (firstMovie == null || lastMovie == null || state.total == 0 && !state.loading) null else {
-                    // Lazy index zero is chrome, never a Plex movie offset.
-                    ((firstMovie.index - MOVIE_GRID_HEADER_ITEMS) / columns * columns) to
-                        (((lastMovie.index - MOVIE_GRID_HEADER_ITEMS) / columns + 1) * columns - 1)
+                    // Lazy index zero is chrome, never a Plex collection offset.
+                    ((firstMovie.index - COLLECTION_GRID_HEADER_ITEMS) / columns * columns) to
+                        (((lastMovie.index - COLLECTION_GRID_HEADER_ITEMS) / columns + 1) * columns - 1)
                 }
             }.filterNotNull().distinctUntilChanged().collect { (first, last) ->
                 artworkRange = (first - columns).coerceAtLeast(0)..(last + columns)
@@ -454,12 +456,12 @@ fun MoviesScreen(
                     modifier = Modifier.weight(1f).fillMaxHeight()
                         .onFocusChanged { if (!it.hasFocus) gridHasFocus = false }.focusGroup(),
                 ) {
-                    item(key = "movies-header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                    item(key = "collection-header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                         DisposableEffect(Unit) {
                             headerMounted = true
                             onDispose { headerMounted = false }
                         }
-                        MoviesHeader(
+                        CollectionHeader(
                             state = state,
                             navigation = navigation,
                             error = error,
@@ -487,29 +489,29 @@ fun MoviesScreen(
                         )
                     }
                     if (state.total == 0 && !state.loading) {
-                        item(key = "movies-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
+                        item(key = "collection-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                             Column(
                                 Modifier.fillMaxWidth().height(emptyHeight),
                                 verticalArrangement = Arrangement.Center,
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Text(if (state.error != null) "Your library couldn't be loaded" else if (state.unwatchedOnly) "All caught up" else "No movies here yet",
+                                Text(if (state.error != null) "Your library couldn't be loaded" else if (state.unwatchedOnly) "All caught up" else "No ${state.noun}s here yet",
                                     color = CinemaColors.Foreground, fontSize = 28.sp, fontWeight = FontWeight.Medium)
                                 Spacer(Modifier.height(14.dp))
-                                Text(state.error ?: if (state.unwatchedOnly) "Turn off Unwatched to see your whole collection." else "Movies added to this Plex library will appear here.",
+                                Text(state.error ?: if (state.unwatchedOnly) "Turn off Unwatched to see your whole collection." else "${state.title} added to this Plex library will appear here.",
                                     color = CinemaColors.Muted, fontSize = 18.sp, modifier = Modifier.widthIn(max = 600.dp))
                                 Spacer(Modifier.height(24.dp))
                                 if (state.error != null) CinemaButton(onClick = state::retry, enabled = controlsEnabled) { ControlText("Try again") }
                                 else if (state.unwatchedOnly) CinemaButton(
                                     onClick = { restoreGrid(); state.setUnwatchedOnly(false) }, enabled = controlsEnabled,
-                                ) { ControlText("Show all movies") }
+                                ) { ControlText("Show all ${state.noun}s") }
                             }
                         }
                     } else {
                         items(
                             count = if (state.total > 0) state.total else 12,
                             key = { index -> (state.generation.toLong() shl 32) or index.toLong() },
-                            contentType = { "movie-poster" },
+                            contentType = { "collection-poster" },
                         ) { index ->
                             val item = if (state.total > 0) state.itemAt(index) else null
                             val requester = remember(state.generation, index) { FocusRequester() }
@@ -568,22 +570,29 @@ fun MoviesScreen(
                                     focusedIndex = index
                                     railRestorePending = false
                                     if (item != null) {
-                                        detailsIndex = index
-                                        state.selectMovie(item)
+                                        if (state.isShow) {
+                                            // Pin selection before child navigation disposes the grid.
+                                            needsFocus = true
+                                            onOpenShow(item)
+                                        } else {
+                                            detailsIndex = index
+                                            state.selectMovie(item)
+                                        }
                                     } else state.requestRange(index, index)
                                 },
-                                placeholderLabel = "Movie ${index + 1}",
+                                placeholderLabel = "${state.noun.replaceFirstChar { it.uppercase() }} ${index + 1}",
                             )
                         }
                     }
                 }
             }
-            MovieAlphabetRail(
+            CollectionAlphabetRail(
                 letters = alphabet,
+                noun = state.noun,
                 loading = state.alphabetLoading,
                 error = state.alphabetError,
                 enabled = controlsEnabled && showAlphabet,
-                titleSorted = state.sort == MovieSort.TITLE,
+                titleSorted = state.sort == CollectionSort.TITLE,
                 requesters = railRequesters,
                 statusFocus = railStatusFocus,
                 onFocusChanged = { railHasFocus = it },
@@ -613,7 +622,7 @@ fun MoviesScreen(
     }
 
     if (sortOpen) {
-        MovieSortDialog(
+        CollectionSortDialog(
             current = state.sort,
             onDismiss = {
                 sortOpen = false
@@ -649,8 +658,8 @@ fun MoviesScreen(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MoviesHeader(
-    state: MovieLibraryState,
+private fun CollectionHeader(
+    state: CollectionLibraryState,
     navigation: @Composable () -> Unit,
     error: String?,
     compact: Boolean,
@@ -662,53 +671,30 @@ private fun MoviesHeader(
     onToggleUnwatched: () -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier.fillMaxWidth()) {
-        navigation()
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CinemaButton(onClick = onBack, modifier = Modifier.focusRequester(backFocus), enabled = enabled) {
-                ControlText("‹  Sources")
+    CollectionHeaderChrome(
+        title = state.title,
+        subtitle = state.library.title,
+        count = when {
+            state.loading -> "Loading your library…"
+            state.unwatchedOnly -> "${state.total} unwatched ${state.noun}s"
+            else -> "${state.total} ${state.noun}s"
+        },
+        hint = if (state.isShow) "Select a show for seasons" else "Select a movie for details",
+        navigation = navigation,
+        compact = compact,
+        enabled = enabled,
+        backFocus = backFocus,
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            CinemaButton(onClick = onSort, modifier = Modifier.focusRequester(sortFocus), enabled = enabled) {
+                ControlText("Sort · ${state.sort.title}${if (compact) "" else "  ⌄"}")
             }
-            Column(Modifier.weight(1f)) {
-                Text("Movies", color = CinemaColors.Foreground, fontSize = if (compact) 28.sp else 34.sp,
-                    fontWeight = FontWeight.SemiBold)
-                Text(state.library.title, color = CinemaColors.Muted, fontSize = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            CinemaButton(onClick = onToggleUnwatched, enabled = enabled, selected = state.unwatchedOnly) {
+                ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
             }
-            if (!compact) {
-                CinemaButton(onClick = onSort, modifier = Modifier.focusRequester(sortFocus), enabled = enabled) {
-                    ControlText("Sort · ${state.sort.title}  ⌄")
-                }
-                CinemaButton(onClick = onToggleUnwatched, enabled = enabled, selected = state.unwatchedOnly) {
-                    ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
-                }
-            }
-        }
-        if (compact) {
-            Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CinemaButton(onClick = onSort, modifier = Modifier.focusRequester(sortFocus), enabled = enabled) {
-                    ControlText("Sort · ${state.sort.title}")
-                }
-                CinemaButton(onClick = onToggleUnwatched, enabled = enabled, selected = state.unwatchedOnly) {
-                    ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when {
-                    state.loading -> "Loading your library…"
-                    state.unwatchedOnly -> "${state.total} unwatched movies"
-                    else -> "${state.total} movies"
-                },
-                color = CinemaColors.Muted, fontSize = 15.sp, modifier = Modifier.weight(1f),
-            )
-            if (!compact) Text("Select a movie for details", color = CinemaColors.Muted.copy(alpha = 0.8f), fontSize = 14.sp)
-        }
+        },
+    ) {
         if (error != null) ErrorNote(error, Modifier.padding(top = 12.dp))
         if (state.error != null && state.total > 0) {
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -720,11 +706,62 @@ private fun MoviesHeader(
     }
 }
 
+/** Shared collection chrome fixes navigation, heading, controls and count placement for every level. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun CollectionHeaderChrome(
+    title: String,
+    subtitle: String,
+    count: String,
+    hint: String?,
+    navigation: @Composable () -> Unit,
+    compact: Boolean,
+    enabled: Boolean,
+    backFocus: FocusRequester,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    backLabel: String = "‹  Sources",
+    actions: @Composable () -> Unit,
+    footer: @Composable () -> Unit = {},
+) {
+    Column(modifier.fillMaxWidth()) {
+        navigation()
+        Row(
+            Modifier.fillMaxWidth().padding(bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CinemaButton(onClick = onBack, modifier = Modifier.focusRequester(backFocus), enabled = enabled) {
+                ControlText(backLabel)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, color = CinemaColors.Foreground, fontSize = if (compact) 28.sp else 34.sp,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, color = CinemaColors.Muted, fontSize = 15.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (!compact) actions()
+        }
+        if (compact) {
+            Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                actions()
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(count, color = CinemaColors.Muted, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            if (!compact && hint != null) Text(hint, color = CinemaColors.Muted.copy(alpha = 0.8f), fontSize = 14.sp)
+        }
+        footer()
+    }
+}
+
 /** Server-supplied buckets retain their labels/order, including digits and non-Latin scripts. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MovieAlphabetRail(
-    letters: List<MovieLetter>,
+private fun CollectionAlphabetRail(
+    letters: List<CollectionLetter>,
+    noun: String,
     loading: Boolean,
     error: String?,
     enabled: Boolean,
@@ -734,7 +771,7 @@ private fun MovieAlphabetRail(
     onFocusChanged: (Boolean) -> Unit,
     onExit: () -> Unit,
     onRetry: () -> Unit,
-    onChoose: (MovieLetter) -> Unit,
+    onChoose: (CollectionLetter) -> Unit,
     onLetterFocus: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -778,7 +815,7 @@ private fun MovieAlphabetRail(
                         })
                 }
                 if (letters.isEmpty() || error != null) {
-                    MovieLetterButton(
+                    CollectionLetterButton(
                         label = if (error != null) "Retry" else if (loading) "Loading" else "None",
                         description = if (error != null) "Retry title index" else if (loading) "Loading title index" else "No title groups available",
                         enabled = enabled,
@@ -796,9 +833,9 @@ private fun MovieAlphabetRail(
                 }
                 letters.forEachIndexed { index, letter ->
                     androidx.compose.runtime.key(letter.key) {
-                        MovieLetterButton(
+                        CollectionLetterButton(
                             label = letter.title,
-                            description = "Jump to ${letter.title}, ${letter.count} movies" +
+                            description = "Jump to ${letter.title}, ${letter.count} ${noun}s" +
                                 if (titleSorted) "" else ". Sorts by title",
                             enabled = enabled,
                             height = cellHeight,
@@ -820,7 +857,7 @@ private fun MovieAlphabetRail(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MovieLetterButton(
+private fun CollectionLetterButton(
     label: String,
     description: String,
     enabled: Boolean,
@@ -887,7 +924,7 @@ private fun ErrorNote(message: String, modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MovieSortDialog(current: MovieSort, onDismiss: () -> Unit, onChoose: (MovieSort) -> Unit) {
+private fun CollectionSortDialog(current: CollectionSort, onDismiss: () -> Unit, onChoose: (CollectionSort) -> Unit) {
     val initial = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopEnd) {
@@ -901,7 +938,7 @@ private fun MovieSortDialog(current: MovieSort, onDismiss: () -> Unit, onChoose:
             ) {
                 Text("SORT YOUR LIBRARY", color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp,
                     modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-                MovieSort.entries.forEach { sort ->
+                CollectionSort.entries.forEach { sort ->
                     CinemaButton(onClick = { onChoose(sort) }, selected = current == sort,
                         modifier = Modifier.fillMaxWidth().then(if (current == sort) Modifier.focusRequester(initial) else Modifier)) {
                         ControlText(sort.title)

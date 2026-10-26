@@ -17,10 +17,10 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
-internal enum class ShowBrowseLevel { SHOWS, SEASONS, EPISODES }
+internal enum class ShowBrowseLevel { SEASONS, EPISODES }
 
 /**
- * Main-thread-confined, 40-item pages: at most six cached pages and two outstanding requests.
+ * Child-only season/episode browser, 40-item pages: at most six cached pages and two requests.
  * Visible pages precede adjacent prefetch; moving the window evicts metadata, not just artwork.
  * Cancelled IO keeps its slot until unwound. Refresh retains cards, and revisions reject stale work.
  */

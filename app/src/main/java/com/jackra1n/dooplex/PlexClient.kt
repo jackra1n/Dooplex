@@ -52,8 +52,8 @@ class PlexClient(private val connection: PlexConnection) {
     }
 
     suspend fun browse(path: String, start: Int = 0): PlexBrowsePage = withContext(Dispatchers.IO) {
-        require(Regex("/library/(?:sections/[0-9]+/all|metadata/[0-9]+/children)").matches(path)) {
-            "A valid Plex library or children path is required."
+        require(Regex("/library/metadata/[0-9]+/children").matches(path)) {
+            "A valid Plex children path is required."
         }
         require(start >= 0) { "A nonnegative Plex page offset is required." }
         readBrowsePage(
@@ -63,23 +63,24 @@ class PlexClient(private val connection: PlexConnection) {
         )
     }
 
-    suspend fun moviePage(
+    suspend fun collectionPage(
         libraryKey: String,
+        libraryType: String,
         start: Int,
         count: Int,
-        sort: MovieSort,
+        sort: CollectionSort,
         unwatchedOnly: Boolean,
     ): PlexBrowsePage = withContext(Dispatchers.IO) {
-        require(RATING_KEY.matches(libraryKey)) { "A valid Plex movie library is required." }
+        require(RATING_KEY.matches(libraryKey)) { "A valid Plex collection library is required." }
         require(start >= 0 && count in 1..MAX_PAGE_SIZE) { "A valid bounded Plex page is required." }
         val parameters = linkedMapOf(
-            "type" to "1",
+            "type" to collectionType(libraryType),
             "sort" to sort.plexValue,
             "X-Plex-Container-Start" to start.toString(),
             "X-Plex-Container-Size" to count.toString(),
         )
         if (unwatchedOnly) parameters["unwatched"] = "1"
-        readBrowsePage("/library/sections/$libraryKey/all", parameters, start, count)
+        readBrowsePage("/library/sections/$libraryKey/all", parameters, start, count, libraryType)
     }
 
     /**
@@ -87,21 +88,21 @@ class PlexClient(private val connection: PlexConnection) {
      * Preserve server collation (including punctuation/Unicode); returned keys are opaque identities,
      * never URLs to follow. See plexapi.library.FirstCharacter for the endpoint/count contract.
      */
-    suspend fun movieAlphabet(libraryKey: String, unwatchedOnly: Boolean): List<MovieLetter> =
+    suspend fun collectionAlphabet(libraryKey: String, libraryType: String, unwatchedOnly: Boolean): List<CollectionLetter> =
         withContext(Dispatchers.IO) {
-            require(RATING_KEY.matches(libraryKey)) { "A valid Plex movie library is required." }
-            val parameters = linkedMapOf("type" to "1", "sort" to MovieSort.TITLE.plexValue)
+            require(RATING_KEY.matches(libraryKey)) { "A valid Plex collection library is required." }
+            val parameters = linkedMapOf("type" to collectionType(libraryType), "sort" to CollectionSort.TITLE.plexValue)
             if (unwatchedOnly) parameters["unwatched"] = "1"
             try {
                 val container = JSONObject(request(
                     "/library/sections/$libraryKey/firstCharacter",
                     parameters,
-                    operation = "movie alphabet",
+                    operation = "collection alphabet",
                 )).getJSONObject("MediaContainer")
                 val directories = container.optJSONArray("Directory")
                 if (directories == null) {
                     if (container.has("Directory") || container.opt("size")?.toString()?.toIntOrNull() != 0) {
-                        throw IOException("Plex returned invalid movie alphabet information.")
+                        throw IOException("Plex returned invalid collection alphabet information.")
                     }
                     return@withContext emptyList()
                 }
@@ -118,16 +119,40 @@ class PlexClient(private val connection: PlexConnection) {
                             count == null || count !in 0..Int.MAX_VALUE.toLong() ||
                             start + count > Int.MAX_VALUE
                         ) {
-                            throw IOException("Plex returned invalid movie alphabet information.")
+                            throw IOException("Plex returned invalid collection alphabet information.")
                         }
-                        if (count > 0) add(MovieLetter(key, title, start.toInt(), count.toInt()))
+                        if (count > 0) add(CollectionLetter(key, title, start.toInt(), count.toInt()))
                         start += count
                     }
                 }
             } catch (_: JSONException) {
-                throw IOException("Plex returned invalid movie alphabet information.")
+                throw IOException("Plex returned invalid collection alphabet information.")
             }
         }
+
+    private fun collectionType(libraryType: String): String = when (libraryType) {
+        "movie" -> "1"
+        "show" -> "2"
+        else -> throw IllegalArgumentException("A movie or show library is required.")
+    }
+
+    /** Refresh one show without accepting movie/season/episode metadata as its replacement. */
+    suspend fun showMetadata(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
+        requireRatingKey(ratingKey)
+        try {
+            val metadata = JSONObject(request("/library/metadata/$ratingKey", operation = "show metadata"))
+                .getJSONObject("MediaContainer").optJSONArray("Metadata")
+                ?: throw IOException("Plex returned no show metadata.")
+            if (metadata.length() != 1) throw IOException("Plex did not return one show.")
+            val source = metadata.getJSONObject(0)
+            if (source.optString("ratingKey") != ratingKey || source.optString("type") != "show") {
+                throw IOException("Plex returned metadata for a different show.")
+            }
+            parseBrowseItem(source) ?: throw IOException("Plex returned invalid show metadata.")
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid show metadata.")
+        }
+    }
 
     suspend fun movieDetails(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
         requireRatingKey(ratingKey)
@@ -169,22 +194,23 @@ class PlexClient(private val connection: PlexConnection) {
         path: String,
         parameters: Map<String, String>,
         start: Int,
-        movieCount: Int? = null,
+        collectionCount: Int? = null,
+        collectionType: String? = null,
     ): PlexBrowsePage {
         try {
             val container = JSONObject(request(path, parameters, operation = "browse"))
                 .getJSONObject("MediaContainer")
             val metadata = container.optJSONArray("Metadata")
-            if (movieCount != null && (metadata?.length() ?: 0) > movieCount) {
-                throw IOException("Plex did not return a bounded movie page.")
+            if (collectionCount != null && (metadata?.length() ?: 0) > collectionCount) {
+                throw IOException("Plex did not return a bounded collection page.")
             }
             val items = buildList {
                 if (metadata != null) for (index in 0 until metadata.length()) {
                     currentCoroutineContext().ensureActive()
                     val source = metadata.getJSONObject(index)
                     val item = parseBrowseItem(source)
-                    if (movieCount != null && (item == null || source.optString("type") != "movie")) {
-                        throw IOException("Plex returned an invalid title in the movie page.")
+                    if (collectionCount != null && (item == null || source.optString("type") != collectionType)) {
+                        throw IOException("Plex returned an invalid title in the collection page.")
                     }
                     if (item != null) add(item)
                 }
@@ -222,7 +248,10 @@ class PlexClient(private val connection: PlexConnection) {
             summary = item.optString("summary"),
             durationMs = duration,
             viewOffsetMs = if (duration > 0) offset.coerceAtMost(duration) else offset,
-            watched = item.optInt("viewCount", 0) > 0,
+            watched = if (type == "show" || type == "season") {
+                val episodes = item.optInt("leafCount", 0)
+                episodes > 0 && item.optInt("viewedLeafCount", 0) >= episodes
+            } else item.optInt("viewCount", 0) > 0,
             rating = item.optDouble("rating").takeIf { it.isFinite() },
             contentRating = item.optString("contentRating"),
             videoResolution = media?.optString("videoResolution").orEmpty(),

@@ -26,7 +26,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var accountClient: PlexAccountClient
     private var account: PlexAccount? = null
     private var connection: PlexConnection? = null
-    private var movieLibrary by mutableStateOf<MovieLibraryState?>(null)
+    private var movieLibrary by mutableStateOf<CollectionLibraryState?>(null)
+    private var showLibrary by mutableStateOf<CollectionLibraryState?>(null)
+    private var selectedShowKey: String? = null
     private var activeLibrary by mutableStateOf<PlexLibrary?>(null)
     private val showHistory = mutableStateListOf<ShowBrowseState>()
     private var posterRepository: PosterRepository? = null
@@ -74,24 +76,25 @@ class MainActivity : ComponentActivity() {
                             onShows = { selectCollection("show") },
                         )
                     }
-                    if (library.type == "movie") {
-                        val movies = checkNotNull(movieLibrary)
-                        destinations.SaveableStateProvider("$serverId:movie:${library.key}") {
-                            MoviesScreen(
-                                state = movies,
+                    val child = showHistory.lastOrNull().takeIf { library.type == "show" }
+                    if (child == null) {
+                        val collection = checkNotNull(if (library.type == "movie") movieLibrary else showLibrary)
+                        destinations.SaveableStateProvider("$serverId:${library.type}:${library.key}") {
+                            CollectionScreen(
+                                state = collection,
                                 posters = posters,
                                 navigation = navigation,
                                 playbackRunning = blocked,
                                 error = state.error,
                                 onBack = ::showSources,
                                 onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                onOpenShow = ::openShow,
                             )
                         }
                     } else {
-                        val shows = checkNotNull(showHistory.lastOrNull())
-                        destinations.SaveableStateProvider("$serverId:show:${shows.path}") {
+                        destinations.SaveableStateProvider("$serverId:show:${child.path}") {
                             ShowsScreen(
-                                state = shows,
+                                state = child,
                                 posters = posters,
                                 enabled = !blocked,
                                 error = state.error,
@@ -119,9 +122,10 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             PlaybackMonitor.state.collect { playback ->
                 if (!playback.running && playback.phase != "Ready") {
-                    pendingMovie?.let { movieLibrary?.refreshMovie(it) }
+                    pendingMovie?.let { movieLibrary?.refreshItem(it) }
                     pendingMovie = null
                     pendingShow?.takeIf { it in showHistory }?.refresh()
+                    if (pendingShow != null) selectedShowKey?.let { showLibrary?.refreshItem(it) }
                     pendingShow = null
                 }
             }
@@ -240,13 +244,12 @@ class MainActivity : ComponentActivity() {
         if (library.type == "movie") {
             if (movieLibrary?.library?.key != library.key) {
                 closeMovies()
-                movieLibrary = MovieLibraryState(library, selected, lifecycleScope)
+                movieLibrary = CollectionLibraryState(library, selected, lifecycleScope)
             }
         } else {
-            val path = "/library/sections/${library.key}/all"
-            if (showHistory.firstOrNull()?.path != path) {
+            if (showLibrary?.library?.key != library.key) {
                 closeShows()
-                showHistory += ShowBrowseState(path, library.title, ShowBrowseLevel.SHOWS, selected, lifecycleScope)
+                showLibrary = CollectionLibraryState(library, selected, lifecycleScope)
             }
         }
         activeLibrary = library
@@ -259,6 +262,17 @@ class MainActivity : ComponentActivity() {
         if (library != null) selectLibrary(library) else showSources()
     }
 
+    /** A shared root card opens the child-only stack; it never opens movie details. */
+    private fun openShow(item: PlexBrowseItem) {
+        if (PlaybackMonitor.state.value.running || state.busy || activeLibrary?.type != "show") return
+        val path = item.childrenPath ?: return
+        val root = showLibrary ?: return
+        showHistory.forEach { it.close() }
+        showHistory.clear()
+        selectedShowKey = item.ratingKey
+        showHistory += ShowBrowseState(path, item.title, ShowBrowseLevel.SEASONS, root.connection, lifecycleScope)
+    }
+
     private fun selectShowItem(item: PlexBrowseItem) {
         if (PlaybackMonitor.state.value.running || state.busy) return
         val current = showHistory.lastOrNull() ?: return
@@ -267,7 +281,7 @@ class MainActivity : ComponentActivity() {
             play(item)
         } else {
             val next = when (current.level) {
-                ShowBrowseLevel.SHOWS -> ShowBrowseLevel.SEASONS
+                // The root is CollectionScreen, not a ShowBrowseState.
                 ShowBrowseLevel.SEASONS -> ShowBrowseLevel.EPISODES
                 ShowBrowseLevel.EPISODES -> return
             }
@@ -302,9 +316,11 @@ class MainActivity : ComponentActivity() {
                 else { state = state.copy(busy = false); showServerPicker() }
             }
             BrowserStage.TITLES -> {
-                if (activeLibrary?.type == "show" && showHistory.size > 1) {
+                if (activeLibrary?.type == "show" && showHistory.isNotEmpty()) {
                     showHistory.removeAt(showHistory.lastIndex).close()
-                    showHistory.last().refresh()
+                    val parent = showHistory.lastOrNull()
+                    if (parent != null) parent.refresh()
+                    else selectedShowKey?.let { showLibrary?.refreshItem(it) }
                 } else showSources()
             }
         }
@@ -319,7 +335,8 @@ class MainActivity : ComponentActivity() {
                 runAction { state = state.copy(libraries = PlexClient(selected).libraries()) }
             }
             BrowserStage.TITLES -> {
-                if (activeLibrary?.type == "movie") movieLibrary?.retry() else showHistory.lastOrNull()?.retry()
+                if (activeLibrary?.type == "movie") movieLibrary?.retry()
+                else showHistory.lastOrNull()?.retry() ?: showLibrary?.retry()
             }
         }
     }
@@ -368,6 +385,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun closeShows() {
+        showLibrary?.close()
+        showLibrary = null
+        selectedShowKey = null
         showHistory.forEach { it.close() }
         showHistory.clear()
         pendingShow = null

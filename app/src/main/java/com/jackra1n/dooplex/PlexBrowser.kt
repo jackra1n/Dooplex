@@ -40,12 +40,12 @@ data class PlexBrowsePage(val items: List<PlexBrowseItem>, val start: Int, val t
 }
 
 /** Server-ordered title-sort bucket; [start] sums preceding bucket counts, not display initials. */
-data class MovieLetter(val key: String, val title: String, val start: Int, val count: Int)
+data class CollectionLetter(val key: String, val title: String, val start: Int, val count: Int)
 
 /** A new id represents every activation, including repeated jumps to the same index. */
-data class MovieJump(val id: Long, val index: Int)
+data class CollectionJump(val id: Long, val index: Int)
 
-enum class MovieSort(val title: String, val plexValue: String) {
+enum class CollectionSort(val title: String, val plexValue: String) {
     TITLE("Title A–Z", "titleSort:asc"),
     ADDED("Recently added", "addedAt:desc"),
     RELEASE("Release date", "originallyAvailableAt:desc"),
