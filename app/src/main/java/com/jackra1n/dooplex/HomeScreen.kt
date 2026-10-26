@@ -303,7 +303,7 @@ internal fun HomeScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().padding(horizontal = edge)) { navigation() }
+        Box(Modifier.fillMaxWidth()) { navigation() }
     }
 
     if (selected != null) {

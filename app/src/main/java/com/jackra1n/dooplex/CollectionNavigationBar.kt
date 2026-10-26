@@ -59,6 +59,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -139,6 +140,16 @@ internal class CollectionFocusState {
 }
 
 /**
+ * Widens a padded container's child back to the full screen, so the top bar placed in a grid header
+ * lines up with the one on Home. [start] and [end] are the container's insets from the screen edges.
+ */
+internal fun Modifier.bleed(start: Dp, end: Dp) = layout { measurable, constraints ->
+    val width = constraints.maxWidth + (start + end).roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-start.roundToPx(), 0) }
+}
+
+/**
  * A centred glass track: the current route keeps a translucent plate, focus slides a light pill over it.
  * Stable parent-owned requesters reattach when lazy headers scroll or destinations change.
  * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
@@ -198,8 +209,9 @@ internal fun CollectionNavigationBar(
     val focusIndex = tabs.indexOfFirst { it.first == focusedType }
     val selection = rememberCapsule(activeIndex, tabOffsets, tabWidths)
     val highlight = rememberCapsule(focusIndex, tabOffsets, tabWidths)
+    // plx-native's safe area: 5% of the screen at the sides, so the bar is identical on every page.
     Row(
-        Modifier.fillMaxWidth().padding(top = unit * 54, bottom = unit * 40),
+        Modifier.fillMaxWidth().padding(start = unit * 96, end = unit * 96, top = unit * 54, bottom = unit * 40),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {

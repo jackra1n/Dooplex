@@ -341,7 +341,7 @@ internal fun ShowsScreen(
                         count = if (state.total == 0 && state.loading) "Loading ${noun}s…" else
                             "${state.total} $noun${if (state.total == 1) "" else "s"}${if (state.loading) " · Loading…" else ""}",
                         hint = null,
-                        navigation = navigation,
+                        navigation = { Box(Modifier.bleed(start = horizontalEdge, end = horizontalEdge)) { navigation() } },
                         libraryControl = { modifier ->
                             CollectionLibraryControl(
                                 library = library,

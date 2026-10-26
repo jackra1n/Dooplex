@@ -521,7 +521,8 @@ internal fun CollectionScreen(
                         }
                         CollectionHeader(
                             state = state,
-                            navigation = navigation,
+                            // The grid stops short of the alphabet rail; the bar spans the screen.
+                            navigation = { Box(Modifier.bleed(start = edge, end = 18.dp + railWidth)) { navigation() } },
                             libraryFocus = libraryFocus,
                             libraries = libraries,
                             onLibrary = onLibrary,
