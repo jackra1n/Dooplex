@@ -334,7 +334,7 @@ class MainActivity : ComponentActivity() {
                     return@runAction
                 }
             }
-            state = state.copy(pin = null, pinQr = null, error = "The sign-in code expired. Choose New code to try again.")
+            state = state.copy(pin = null, pinQr = null, error = "The sign-in code expired. Choose Try again for a new one.")
         }
     }
 
