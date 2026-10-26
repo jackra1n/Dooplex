@@ -1,0 +1,43 @@
+[tasks.build]
+description = "Build an optimized APK signed with the existing Android development key"
+shell = "bash -c"
+run = '''
+set -euo pipefail
+./gradlew :app:assembleRelease :app:validateSigningDebug
+sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+signer="${APKSIGNER:-$sdk/build-tools/36.0.0/apksigner}"
+key="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+apk="app/build/outputs/apk/release/dooplex-movies.apk"
+"$signer" sign --ks "$key" --ks-key-alias androiddebugkey \
+  --ks-pass pass:android --key-pass pass:android \
+  --out "$apk" app/build/outputs/apk/release/app-release-unsigned.apk
+"$signer" verify "$apk"
+printf 'Built %s\n' "$apk"
+'''
+
+[tasks.upload]
+description = "Build and submit the APK to the Zidoo web installer; override the address with ZIDOO_URL"
+depends = ["build"]
+shell = "bash -c"
+run = '''
+set -euo pipefail
+target="${ZIDOO_URL:-http://<zidoo-ip>:18888}"
+response=$(mktemp)
+trap 'rm -f "$response"' EXIT
+# Match Web Install's Huploadify request; HTTP acceptance is not an installation receipt.
+if ! status=$(curl --silent --show-error --fail-with-body \
+  --connect-timeout 10 --max-time 180 \
+  --header 'X-Requested-With: XMLHttpRequest' \
+  --form 'file=@app/build/outputs/apk/release/dooplex-movies.apk;type=application/vnd.android.package-archive' \
+  --output "$response" --write-out '%{http_code}' \
+  "${target%/}/?fallback=1"); then
+  cat "$response"
+  exit 1
+fi
+cat "$response"
+if [[ "$status" != 200 ]]; then
+  printf '\nUpload rejected: expected HTTP 200, received %s.\n' "$status" >&2
+  exit 1
+fi
+printf '\nAPK upload accepted. Check the Zidoo for the installation result.\n'
+'''
