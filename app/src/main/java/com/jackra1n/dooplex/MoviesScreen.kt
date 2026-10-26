@@ -3,6 +3,8 @@ package com.jackra1n.dooplex
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -37,6 +39,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyLayoutScrollScope
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,10 +68,13 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -92,6 +99,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
@@ -105,9 +115,38 @@ private const val MOVIE_GRID_HEADER_ITEMS = 1
 @OptIn(ExperimentalFoundationApi::class)
 private val MovieGridBringIntoViewSpec = object : BringIntoViewSpec {}
 
+private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
+    snapshotFlow { layoutInfo.totalItemsCount }.first { it > index }
+    scroll {
+        val scope = LazyLayoutScrollScope(this@scrollToMovieLetter, this)
+        val viewport = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).toFloat()
+        val cardHeight = layoutInfo.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
+            ?.size?.height?.toFloat() ?: viewport / 2
+        val travel = minOf(viewport * 0.65f, cardHeight * 0.9f).coerceAtLeast(1f)
+        var distance = scope.calculateDistanceTo(index).toFloat()
+        // Long library jumps animate only the final row, never compose hundreds of intermediate titles.
+        if (abs(distance) > travel) {
+            val direction = sign(distance)
+            // Measure bottom clamping before staging the approach to a short final bucket.
+            scope.snapToItem(index)
+            val settledOffset = scope.calculateDistanceTo(index)
+            scope.snapToItem(index, -(settledOffset + direction * travel).roundToInt())
+            distance = scope.calculateDistanceTo(index) - settledOffset.toFloat()
+        }
+        if (abs(distance) > 0.5f) {
+            var consumed = 0f
+            animate(0f, distance, animationSpec = tween(220, easing = FastOutSlowInEasing)) { value, _ ->
+                consumed += scope.scrollBy(value - consumed)
+            }
+        }
+        scope.snapToItem(index)
+    }
+}
+
 /**
  * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
  * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
+ * Vertical DPAD targets retain their column while off-screen rows are composed and revealed.
  * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -132,6 +171,7 @@ fun MoviesScreen(
     // Dialog/window focus handoffs must not overwrite the poster chosen for restoration.
     var detailsIndex by remember(state) { mutableStateOf<Int?>(null) }
     var pendingFocusIndex by remember(state) { mutableStateOf<Int?>(null) }
+    var directionalFocus by remember(state) { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     var restoreToSort by remember { mutableStateOf(false) }
     var restoreEpoch by remember { mutableIntStateOf(0) }
@@ -156,6 +196,7 @@ fun MoviesScreen(
 
     fun restoreGrid() {
         restoreToSort = false
+        directionalFocus = false
         awaitingJump = false
         returnAfterJump = false
         railRestorePending = false
@@ -166,6 +207,15 @@ fun MoviesScreen(
 
     fun leaveAlphabet() {
         if (awaitingJump) returnAfterJump = true else restoreGrid()
+    }
+
+    fun movePosterFocus(index: Int) {
+        focusedIndex = index
+        pendingFocusIndex = index
+        directionalFocus = true
+        needsFocus = true
+        restoreToSort = false
+        restoreEpoch++
     }
 
     fun closeDetails() {
@@ -189,8 +239,7 @@ fun MoviesScreen(
         val jump = state.jumpRequest ?: return@LaunchedEffect
         focusedIndex = jump.index
         restoreToSort = false
-        // The server gives an absolute title-sort index; jump directly, including uncached pages.
-        grid.scrollToItem(jump.index + MOVIE_GRID_HEADER_ITEMS)
+        grid.scrollToMovieLetter(jump.index + MOVIE_GRID_HEADER_ITEMS)
         awaitingJump = false
         pendingFocusIndex = null
         if (returnAfterJump || !railHasFocus && !railRestorePending) restoreGrid()
@@ -222,7 +271,16 @@ fun MoviesScreen(
         } else if (state.total > 0 || state.loading) {
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
             val gridIndex = target + MOVIE_GRID_HEADER_ITEMS
-            if (grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) grid.scrollToItem(gridIndex)
+            if (grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
+                if (directionalFocus) {
+                    val layout = grid.layoutInfo
+                    val cardHeight = layout.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
+                        ?.size?.height ?: 0
+                    val offset = if (gridIndex > grid.firstVisibleItemIndex)
+                        -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
+                    grid.animateScrollToItem(gridIndex, offset)
+                } else grid.scrollToItem(gridIndex)
+            }
             val requester = snapshotFlow { requesters[target] }.filterNotNull().first()
             withFrameNanos { }
             focusedIndex = target
@@ -235,6 +293,7 @@ fun MoviesScreen(
         }
         pendingFocusIndex = null
         needsFocus = false
+        directionalFocus = false
     }
 
     BackHandler(enabled = !playbackRunning) {
@@ -286,6 +345,8 @@ fun MoviesScreen(
                 ?: (if (state.sort == MovieSort.TITLE) alphabet.lastOrNull { it.start <= focusedIndex }?.key else null)
                 ?: alphabet.firstOrNull()?.key
             needsFocus = false
+            pendingFocusIndex = null
+            restoreEpoch++
             if (showAlphabet) {
                 val target = if (state.alphabetError != null) railStatusFocus
                     else railRequesters[lastRailKey] ?: railStatusFocus
@@ -424,9 +485,34 @@ fun MoviesScreen(
                                 enabled = controlsEnabled,
                                 modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
                                     val count = if (state.total > 0) state.total else 12
-                                    val rowEnd = index % columns == columns - 1 || index == count - 1
+                                    val logicalIndex = pendingFocusIndex ?: index
+                                    val column = logicalIndex % columns
+                                    val rowEnd = column == columns - 1 || logicalIndex == count - 1
                                     if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
                                         if (event.type == KeyEventType.KeyDown) enterAlphabet()
+                                        true
+                                    } else if (controlsEnabled && event.key == Key.DirectionDown) {
+                                        val nextRow = (logicalIndex / columns + 1) * columns
+                                        if (event.type == KeyEventType.KeyDown && nextRow < count)
+                                            movePosterFocus((logicalIndex + columns).coerceAtMost(count - 1))
+                                        true
+                                    } else if (controlsEnabled && event.key == Key.DirectionUp && logicalIndex >= columns) {
+                                        if (event.type == KeyEventType.KeyDown) movePosterFocus(logicalIndex - columns)
+                                        true
+                                    } else if (controlsEnabled && event.key == Key.DirectionUp && pendingFocusIndex != null) {
+                                        if (event.type == KeyEventType.KeyDown) {
+                                            pendingFocusIndex = null
+                                            directionalFocus = false
+                                            restoreToSort = true
+                                            needsFocus = true
+                                            restoreEpoch++
+                                        }
+                                        true
+                                    } else if (controlsEnabled && pendingFocusIndex != null &&
+                                        (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)) {
+                                        val target = if (event.key == Key.DirectionLeft && column > 0) logicalIndex - 1
+                                            else if (event.key == Key.DirectionRight && !rowEnd) logicalIndex + 1 else logicalIndex
+                                        if (event.type == KeyEventType.KeyDown && target != logicalIndex) movePosterFocus(target)
                                         true
                                     } else false
                                 },
@@ -812,13 +898,27 @@ private fun MoviePosterCard(
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
             .drawWithCache {
                 val highlight = Brush.radialGradient(
-                    colors = listOf(CinemaColors.Foreground.copy(alpha = 0.20f), Color.Transparent),
+                    colors = listOf(CinemaColors.Foreground.copy(alpha = 0.08f), Color.Transparent),
                     center = Offset(size.width * 0.5f, 0f),
                     radius = size.height.coerceAtLeast(1f),
                 )
+                val shine = Brush.linearGradient(
+                    0f to CinemaColors.Foreground.copy(alpha = 0.72f),
+                    0.22f to CinemaColors.Foreground.copy(alpha = 0.28f),
+                    0.58f to CinemaColors.Foreground.copy(alpha = 0.07f),
+                    1f to CinemaColors.Foreground.copy(alpha = 0.20f),
+                    start = Offset.Zero, end = Offset(size.width, size.height),
+                )
+                val edge = Stroke(1.dp.toPx())
+                val halo = Stroke(3.dp.toPx())
+                val inset = edge.width / 2
+                val outlineSize = Size((size.width - edge.width).coerceAtLeast(0f), (size.height - edge.width).coerceAtLeast(0f))
+                val corner = CornerRadius((9.dp.toPx() - inset).coerceAtLeast(0f))
                 onDrawWithContent {
                     drawContent()
                     drawRect(highlight, alpha = light.value)
+                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value * 0.14f, style = halo)
+                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value, style = edge)
                 }
             }) {
             PosterArtwork(movie?.thumbPath, posters, artworkWidth, loadArtwork,

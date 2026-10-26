@@ -1,7 +1,11 @@
 package com.jackra1n.dooplex
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -14,6 +18,9 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import java.io.IOException
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -29,7 +36,11 @@ internal data class MovieAtmosphere(val left: Color, val right: Color, val lower
     }
 }
 
-/** Cached focus colors are synchronous; only genuinely cold artwork waits for the shared load. */
+private fun MovieAtmosphere.blend(other: MovieAtmosphere, fraction: Float) = MovieAtmosphere(
+    lerp(left, other.left, fraction), lerp(right, other.right, fraction), lerp(lower, other.lower, fraction),
+)
+
+/** Cached palettes start blending immediately; cold artwork retains the last wash until ready. */
 @Composable
 internal fun MovieBackdrop(
     movie: PlexBrowseItem?,
@@ -40,8 +51,7 @@ internal fun MovieBackdrop(
 ) {
     val path = movie?.thumbPath
     val artworkHeight = artworkWidth * 3 / 2
-    // Keying cold state by artwork also clears the previous poster's colors immediately.
-    var loaded by remember(posters, path, artworkWidth) { mutableStateOf(MovieAtmosphere.Neutral) }
+    var loaded by remember(posters, path, artworkWidth) { mutableStateOf<MovieAtmosphere?>(null) }
     val cached = path?.let { posters.cachedAtmosphere(it, artworkWidth, artworkHeight) }
     LaunchedEffect(posters, path, artworkWidth, active) {
         if (!active || path == null || cached != null) return@LaunchedEffect
@@ -55,10 +65,30 @@ internal fun MovieBackdrop(
             loaded = MovieAtmosphere.Neutral
         }
     }
-    AtmosphericWash(cached ?: loaded, modifier)
+    val target = if (path == null) MovieAtmosphere.Neutral else cached ?: loaded
+    var previous by remember(posters) { mutableStateOf(MovieAtmosphere.Neutral) }
+    var current by remember(posters) { mutableStateOf(cached ?: MovieAtmosphere.Neutral) }
+    val fade = remember(posters) { Animatable(1f) }
+    LaunchedEffect(posters, target) {
+        if (target == null || target == current) return@LaunchedEffect
+        previous = previous.blend(current, fade.value)
+        current = target
+        fade.snapTo(0f)
+        fade.animateTo(1f, tween(180, easing = FastOutSlowInEasing))
+    }
+    Box(modifier) {
+        AtmosphericWash(previous, Modifier.fillMaxSize().graphicsLayer {
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+            alpha = 1f - fade.value
+        })
+        AtmosphericWash(current, Modifier.fillMaxSize().graphicsLayer {
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+            alpha = fade.value
+        })
+    }
 }
 
-/** Static overlapping brushes, rebuilt only for palette/size changes; no fade or frame-time work. */
+/** At most two cached brush layers; the short transition only changes compositor opacity. */
 @Composable
 private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
     Box(modifier.drawWithCache {
