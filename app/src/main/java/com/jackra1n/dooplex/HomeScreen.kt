@@ -197,15 +197,21 @@ internal fun HomeScreen(
         val heroHeight = if (shown != null) maxHeight * 0.8f else maxHeight * 0.3f
         val heroHeightPx = with(density) { heroHeight.toPx() }
         val restLine = with(density) { 152.dp.toPx() }
-        val shelfSpec = remember(listState, restLine) {
+        val shelfSpec = remember(listState, restLine, heroHeightPx) {
             object : BringIntoViewSpec {
                 @Suppress("OVERRIDE_DEPRECATION")
                 override val scrollAnimationSpec: AnimationSpec<Float> = ShelfSpring
 
-                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
-                    if (heroFocused) {
-                        if (listState.firstVisibleItemIndex == 0) -listState.firstVisibleItemScrollOffset.toFloat() else 0f
-                    } else offset - restLine
+                // A burst of Up presses can focus the hero while it is still rows above the screen.
+                // Shelves share one height, so the way back to the top is known from the first one shown.
+                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                    if (!heroFocused) return offset - restLine
+                    val first = listState.firstVisibleItemIndex
+                    val above = listState.firstVisibleItemScrollOffset.toFloat()
+                    if (first == 0) return -above
+                    val shelf = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.size?.toFloat() ?: 0f
+                    return -(heroHeightPx + (first - 1) * shelf + above)
+                }
             }
         }
         // Compose pivots TV focus to 30% of a row; a shelf only scrolls when its card would cross the
