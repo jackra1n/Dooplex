@@ -61,7 +61,9 @@ internal fun rememberMovieArtworkPainter(
         posters.cached(path, width, height)?.let { bitmap = it }
         if (!active || bitmap != null) return@LaunchedEffect
         try {
+            val started = System.nanoTime()
             bitmap = posters.load(path, width, height)
+            Analytics.sample("poster.wait.ms", (System.nanoTime() - started) / 1e6)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: IOException) {
