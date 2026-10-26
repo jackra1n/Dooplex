@@ -44,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,7 +98,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 private const val COLLECTION_GRID_HEADER_ITEMS = 1
 
@@ -155,6 +155,7 @@ internal fun CollectionScreen(
     onOpenShow: (PlexBrowseItem) -> Unit,
 ) {
     val grid = rememberLazyGridState()
+    val scroller = rememberGridRowScroller(grid)
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
@@ -221,12 +222,14 @@ internal fun CollectionScreen(
     }
 
     fun movePosterFocus(index: Int) {
+        val from = pendingFocusIndex ?: focusedIndex
         focusedIndex = index
         pendingFocusIndex = index
         directionalFocus = true
         needsFocus = true
         restoreToHeader = false
         restoreEpoch++
+        if (index / scroller.columns != from / scroller.columns) scroller.showCard(index)
     }
 
     fun closeDetails() {
@@ -307,7 +310,7 @@ internal fun CollectionScreen(
         val focusEpoch = restoreEpoch
         if (restoreToHeader) {
             coroutineScope {
-                if (directionalFocus) launch { grid.animateScrollToItem(0) } else grid.scrollToItem(0)
+                if (directionalFocus) scroller.showHeader() else grid.scrollToItem(0)
                 snapshotFlow {
                     headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 }
                 }.first { it }
@@ -327,22 +330,8 @@ internal fun CollectionScreen(
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
             val gridIndex = target + COLLECTION_GRID_HEADER_ITEMS
             coroutineScope {
-                val layout = grid.layoutInfo
-                val visible = layout.visibleItemsInfo.firstOrNull { it.index == gridIndex }
-                if (directionalFocus) {
-                    val below = visible?.let { it.offset.y + it.size.height > layout.viewportEndOffset }
-                        ?: (gridIndex > grid.firstVisibleItemIndex)
-                    val above = visible?.let { it.offset.y < layout.viewportStartOffset } ?: !below
-                    if (above || below) {
-                        val cardHeight = visible?.size?.height ?: layout.visibleItemsInfo
-                            .firstOrNull { it.index >= COLLECTION_GRID_HEADER_ITEMS }?.size?.height
-                            ?: (layout.viewportEndOffset - layout.viewportStartOffset)
-                        val offset = if (below) -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
-                        // Animate the row leader: lazy-grid overshoot checks compare against its first index.
-                        val rowStart = COLLECTION_GRID_HEADER_ITEMS + target / layout.maxSpan * layout.maxSpan
-                        launch { grid.animateScrollToItem(rowStart, offset) }
-                    }
-                } else if (visible == null) {
+                // Directional moves are already gliding on the row scroller.
+                if (!directionalFocus && grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
                     grid.scrollToItem(gridIndex)
                 }
                 val requester = snapshotFlow {
@@ -404,6 +393,11 @@ internal fun CollectionScreen(
             ((gridWidth - edge - 18.dp - 18.dp * (columns - 1)) / columns).toPx()
         }
         val artworkWidth = artworkBucket(posterPixels)
+        val rowSpacing = with(density) { 24.dp.toPx() }
+        SideEffect {
+            scroller.columns = columns
+            scroller.spacing = rowSpacing
+        }
         val emptyHeight = (maxHeight - 180.dp).coerceAtLeast(260.dp)
         val controlsEnabled = !playbackRunning && !modalOpen
         val lastIndex = (if (state.total > 0) state.total else 12) - 1

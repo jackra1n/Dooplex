@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -107,6 +108,7 @@ internal fun ShowsScreen(
     onLibrary: (PlexLibrary) -> Unit,
 ) {
     val grid = rememberSaveable(state.path, saver = LazyGridState.Saver) { LazyGridState() }
+    val scroller = rememberGridRowScroller(grid)
     var focusedIndex by rememberSaveable(state.path) { mutableIntStateOf(0) }
     var headerSelected by rememberSaveable(state.path) { mutableStateOf(false) }
     val requesters = remember(state) { mutableStateMapOf<Int, FocusRequester>() }
@@ -131,6 +133,7 @@ internal fun ShowsScreen(
     }
 
     fun moveFocus(index: Int) {
+        val from = pendingIndex ?: focusedIndex
         pendingIndex = index
         focusedIndex = index
         headerSelected = false
@@ -138,6 +141,7 @@ internal fun ShowsScreen(
         directional = true
         needsFocus = true
         focusEpoch++
+        if (index / scroller.columns != from / scroller.columns) scroller.showCard(index)
     }
 
     fun focusHeader() {
@@ -221,6 +225,11 @@ internal fun ShowsScreen(
         val safeInsetPx = with(density) { if (episodes) edge.toPx() else 0f }
         val artworkWidth = artworkBucket(with(density) { ((maxWidth - horizontalEdge * 2 - 18.dp * (columns - 1)) / columns).toPx() })
         val count = if (state.total > 0) state.total else if (state.loading) columns * 2 else 0
+        val rowSpacing = with(density) { (if (compact) 18.dp else 24.dp).toPx() }
+        SideEffect {
+            scroller.columns = columns
+            scroller.spacing = rowSpacing
+        }
         val noun = when (state.level) {
             ShowBrowseLevel.SEASONS -> "season"
             ShowBrowseLevel.EPISODES -> "episode"
@@ -243,7 +252,7 @@ internal fun ShowsScreen(
             val epoch = focusEpoch
             if (revealHeader || headerSelected || count == 0) {
                 coroutineScope {
-                    if (directional) launch { grid.animateScrollToItem(0) } else grid.scrollToItem(0)
+                    if (directional) scroller.showHeader() else grid.scrollToItem(0)
                     snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
                     withFrameNanos { }
                     if (needsFocus && epoch == focusEpoch) {
@@ -261,7 +270,8 @@ internal fun ShowsScreen(
                 coroutineScope {
                     val layout = grid.layoutInfo
                     val visible = layout.visibleItemsInfo.firstOrNull { it.index == lazyIndex }
-                    if (directional || episodes) {
+                    // Directional moves are already gliding on the row scroller.
+                    if (episodes && !directional) {
                         val height = visible?.size?.height
                             ?: layout.visibleItemsInfo.firstOrNull { it.index > 0 }?.size?.height
                             ?: (layout.viewportEndOffset - layout.viewportStartOffset)
@@ -286,7 +296,7 @@ internal fun ShowsScreen(
                             // Scroll the row, never the column: focus changes cannot pan horizontally.
                             launch { grid.animateScrollToItem(1 + target / columns * columns, -top.toInt()) }
                         }
-                    } else if (visible == null) grid.scrollToItem(lazyIndex)
+                    } else if (!directional && visible == null) grid.scrollToItem(lazyIndex)
                     val requester = snapshotFlow {
                         requesters[target]?.takeIf { grid.layoutInfo.visibleItemsInfo.any { it.index == lazyIndex } }
                     }.filterNotNull().first()
