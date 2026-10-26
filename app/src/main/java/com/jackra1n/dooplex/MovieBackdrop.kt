@@ -94,15 +94,15 @@ private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
     Box(modifier.drawWithCache {
         val radius = maxOf(size.width, size.height) * 0.62f
         val left = Brush.radialGradient(
-            listOf(colors.left.copy(alpha = colors.left.alpha * 0.44f), Color.Transparent),
+            listOf(colors.left.copy(alpha = colors.left.alpha * 0.28f), Color.Transparent),
             Offset(size.width * 0.03f, size.height * 0.08f), radius,
         )
         val right = Brush.radialGradient(
-            listOf(colors.right.copy(alpha = colors.right.alpha * 0.40f), Color.Transparent),
+            listOf(colors.right.copy(alpha = colors.right.alpha * 0.26f), Color.Transparent),
             Offset(size.width * 0.98f, size.height * 0.16f), radius,
         )
         val lower = Brush.radialGradient(
-            listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.36f), Color.Transparent),
+            listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.23f), Color.Transparent),
             Offset(size.width * 0.96f, size.height * 1.02f), radius * 0.90f,
         )
         // This corner intentionally stays almost neutral instead of combining poster hues.
@@ -125,6 +125,7 @@ private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
  * Samples only 18×27 pixels off-main once per repository bitmap. Hue buckets preserve
  * distinct saturated regions instead of averaging complementary colors into a gray wash.
  * Region-weighted selection favors the poster's layout, with separated hues where available.
+ * Selected hues blend toward luminance gray so artwork stays the focus, not the background.
  */
 internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = withContext(Dispatchers.Default) {
     val hueBuckets = 12
@@ -208,10 +209,11 @@ internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = w
         val blue = sums[offset + 2] / weight
         val ceiling = if (bucket == neutralBucket) 0.36f else 0.72f
         val scale = minOf(1.8f, ceiling / maxOf(red, green, blue))
+        val gray = red * 0.2126f + green * 0.7152f + blue * 0.0722f
         return Color(
-            (red * scale).coerceIn(0f, ceiling),
-            (green * scale).coerceIn(0f, ceiling),
-            (blue * scale).coerceIn(0f, ceiling),
+            ((gray + (red - gray) * 0.60f) * scale).coerceIn(0f, ceiling),
+            ((gray + (green - gray) * 0.60f) * scale).coerceIn(0f, ceiling),
+            ((gray + (blue - gray) * 0.60f) * scale).coerceIn(0f, ceiling),
         )
     }
     for (region in selected.indices) {
