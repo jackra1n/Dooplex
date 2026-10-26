@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -40,6 +42,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -59,16 +62,18 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
- * Artwork-led movie destination with overscan-safe controls beside a short, left-aligned synopsis.
- * The hero never scrolls: full titles, synopsis and separate credits live in an explicit reader.
- * D-pad Down opens its entry point from playback; selecting it focuses the scrollable reader.
- * Reader Up/Down scroll text and reach its return control at either boundary; Back returns to the
- * hero's reading link before dismissing the destination. Metadata refresh never resets focus, and
- * removing a focused Retry/Start over action returns focus to playback. Playback delegates unchanged
- * to the owner's close-before-play callback; artwork uses the shared bounded repository cache.
+ * Artwork-led movie destination with fitted Plex title art, source-labelled ratings and formats.
+ * Black readability gradients keep the upper/right artwork clear; short hero credits complement
+ * the complete synopsis and credits reader. Compact layouts reserve space for every action.
+ * D-pad Down opens the reader entry point from playback; selecting it focuses the scrollable text.
+ * Reader Up/Down reach its return control at either boundary; Back returns to the hero reading link.
+ * Metadata refresh never resets focus; removing Retry/Start over returns focus to playback.
+ * Playback delegates unchanged to the owner's close-before-play callback; artwork is cached.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -100,12 +105,29 @@ internal fun MovieDetailsScreen(
             movie.subtitle.takeIf { it.isNotBlank() },
             movie.durationMs.takeIf { it > 0 }?.let(::detailRuntime),
             movie.contentRating.takeIf { it.isNotBlank() },
-            movie.videoResolution.takeIf { it.isNotBlank() }?.uppercase(),
-            movie.rating?.let { "Plex rating $it" },
             "Watched".takeIf { movie.watched },
         ).joinToString("  ·  ")
     }
     val genres = remember(movie.genres) { movie.genres.joinToString("  ·  ") }
+    val ratings = remember(movie.ratings) {
+        movie.ratings.filter { it.value.isFinite() && it.value in 0.0..10.0 }.mapNotNull { rating ->
+            when (rating.source) {
+                "IMDb" -> "IMDb ${String.format(Locale.ROOT, "%.1f", rating.value)}/10"
+                "Rotten Tomatoes" -> when (rating.type) {
+                    "critic" -> "Rotten Tomatoes critics ${(rating.value * 10).roundToInt()}%"
+                    "audience" -> "Rotten Tomatoes audience ${(rating.value * 10).roundToInt()}%"
+                    else -> null
+                }
+                else -> null
+            }
+        }.distinct().joinToString("  ·  ")
+    }
+    val formats = remember(movie.videoFormat, movie.audioFormat, movie.videoResolution) {
+        listOf(
+            movie.videoFormat.ifBlank { movie.videoResolution.uppercase(Locale.ROOT) },
+            movie.audioFormat,
+        ).filter { it.isNotBlank() }.joinToString("  ·  ")
+    }
     val synopsis = movie.summary.ifBlank { if (loading) "Loading synopsis…" else "No synopsis supplied by Plex." }
     // Capture this before removal can move focus and overwrite the identity of the removed action.
     val focusedActionRemoved = (lastFocus == DetailFocus.Retry && error == null) ||
@@ -114,10 +136,12 @@ internal fun MovieDetailsScreen(
     BackHandler(enabled = enabled) {
         if (reading) reading = false else onDismiss()
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(CinemaColors.Canvas)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
         val compact = maxHeight < 500.dp || maxWidth < 900.dp
         val edge = if (compact) 24.dp else 56.dp
-        val verticalEdge = if (compact) 18.dp else 40.dp
+        val verticalEdge = if (compact) 18.dp else if (maxHeight < 700.dp) 24.dp else 40.dp
+        val spacious = maxHeight >= 700.dp
+        val logoHeight = if (compact) 40.dp else if (spacious) 104.dp else 64.dp
         val density = LocalDensity.current
         val scrollStep = with(density) { (if (compact) 76.dp else 128.dp).toPx() }
 
@@ -136,7 +160,7 @@ internal fun MovieDetailsScreen(
                                 right = playFocus
                                 down = playFocus
                             },
-                    ) { DetailActionText("‹  Back to movies", compact) }
+                    ) { DetailActionText(if (compact) "‹  Back" else "‹  Back to library", compact) }
                     Spacer(Modifier.weight(1f))
                     if (loading || error != null) Text(
                         if (loading) "Updating details…" else "Details unavailable · Retry below",
@@ -148,107 +172,127 @@ internal fun MovieDetailsScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                Column(
-                    Modifier.fillMaxWidth(if (compact) 0.64f else 0.58f),
-                    verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 32.dp),
+                    verticalAlignment = Alignment.Bottom,
                 ) {
-                    Text(
-                        movie.title,
-                        color = CinemaColors.Foreground,
-                        fontSize = if (compact) 23.sp else 38.sp,
-                        lineHeight = if (compact) 27.sp else 45.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (genres.isNotBlank()) Text(
-                        genres,
-                        color = CinemaColors.Foreground.copy(alpha = 0.84f),
-                        fontSize = if (compact) 11.sp else 14.sp,
-                        lineHeight = if (compact) 15.sp else 20.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (metadata.isNotBlank()) Text(
-                        metadata,
-                        color = CinemaColors.Muted,
-                        fontSize = if (compact) 11.sp else 14.sp,
-                        lineHeight = if (compact) 16.sp else 22.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        synopsis,
-                        color = CinemaColors.Foreground.copy(alpha = 0.9f),
-                        fontSize = if (compact) 12.sp else 17.sp,
-                        lineHeight = if (compact) 18.sp else 26.sp,
-                        maxLines = if (compact) 2 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(
-                        Modifier.padding(top = if (compact) 2.dp else 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        Modifier.weight(if (compact) 0.73f else 0.67f),
+                        verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
                     ) {
-                        CinemaButton(
-                            onClick = { onPlay(false) }, enabled = enabled, selected = true,
-                            modifier = Modifier.focusRequester(playFocus)
-                                .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Play }
-                                .focusProperties {
-                                    up = backFocus
-                                    down = moreFocus
-                                    left = FocusRequester.Cancel
-                                    right = if (resume) startFocus else FocusRequester.Cancel
-                                },
+                        DetailTitle(movie, posters, enabled, compact, logoHeight)
+                        if (!compact && spacious && genres.isNotBlank()) Text(
+                            genres,
+                            color = CinemaColors.Foreground.copy(alpha = 0.84f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (metadata.isNotBlank()) Text(
+                            metadata,
+                            color = CinemaColors.Muted,
+                            fontSize = if (compact) 11.sp else 13.sp,
+                            lineHeight = if (compact) 14.sp else 18.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (ratings.isNotBlank()) Text(
+                            ratings,
+                            color = CinemaColors.Foreground,
+                            fontSize = if (compact) 11.sp else 13.sp,
+                            lineHeight = if (compact) 14.sp else 18.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (formats.isNotBlank()) Text(
+                            formats,
+                            color = CinemaColors.Foreground.copy(alpha = 0.86f),
+                            fontSize = if (compact) 11.sp else 13.sp,
+                            lineHeight = if (compact) 14.sp else 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            synopsis,
+                            color = CinemaColors.Foreground.copy(alpha = 0.92f),
+                            fontSize = if (compact) 12.sp else 16.sp,
+                            lineHeight = if (compact) 15.sp else 24.sp,
+                            maxLines = if (spacious) 3 else 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            Modifier.padding(top = if (compact) 2.dp else 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            DetailActionText(if (resume) "Resume · ${detailRuntime(movie.viewOffsetMs)}" else "Play", compact)
+                            CinemaButton(
+                                onClick = { onPlay(false) }, enabled = enabled, selected = true,
+                                modifier = Modifier.focusRequester(playFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Play }
+                                    .focusProperties {
+                                        up = backFocus
+                                        down = moreFocus
+                                        left = FocusRequester.Cancel
+                                        right = if (resume) startFocus else FocusRequester.Cancel
+                                    },
+                            ) {
+                                DetailPlayIcon(compact)
+                                DetailActionText(
+                                    if (!resume) "Play" else if (compact) "Resume" else "Resume · ${detailRuntime(movie.viewOffsetMs)}",
+                                    compact,
+                                )
+                            }
+                            if (resume) CinemaButton(
+                                onClick = { onPlay(true) }, enabled = enabled,
+                                modifier = Modifier.focusRequester(startFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.StartOver }
+                                    .focusProperties {
+                                        up = backFocus
+                                        down = if (error != null) retryFocus else moreFocus
+                                        left = playFocus
+                                        right = FocusRequester.Cancel
+                                    },
+                            ) { DetailActionText("Start over", compact) }
                         }
-                        if (resume) CinemaButton(
-                            onClick = { onPlay(true) }, enabled = enabled,
-                            modifier = Modifier.focusRequester(startFocus)
-                                .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.StartOver }
-                                .focusProperties {
-                                    up = backFocus
-                                    down = if (error != null) retryFocus else moreFocus
-                                    left = playFocus
-                                    right = FocusRequester.Cancel
-                                },
-                        ) { DetailActionText("Start over", compact) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
+                            DetailReadingLink(
+                                text = if (compact) "Synopsis & credits  ›" else "Read synopsis & credits  ›",
+                                compact = compact,
+                                enabled = enabled,
+                                onClick = { reading = true },
+                                modifier = Modifier.focusRequester(moreFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.More }
+                                    .focusProperties {
+                                        up = playFocus
+                                        down = FocusRequester.Cancel
+                                        left = FocusRequester.Cancel
+                                        right = if (error != null) retryFocus else FocusRequester.Cancel
+                                    },
+                            )
+                            if (error != null) DetailReadingLink(
+                                text = "Retry details",
+                                compact = compact,
+                                enabled = enabled,
+                                onClick = onRetry,
+                                modifier = Modifier.focusRequester(retryFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Retry }
+                                    .focusProperties {
+                                        up = if (resume) startFocus else playFocus
+                                        down = FocusRequester.Cancel
+                                        left = moreFocus
+                                        right = FocusRequester.Cancel
+                                    },
+                            )
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
-                        DetailReadingLink(
-                            text = "Read synopsis & credits  ›",
-                            compact = compact,
-                            enabled = enabled,
-                            onClick = { reading = true },
-                            modifier = Modifier.focusRequester(moreFocus)
-                                .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.More }
-                                .focusProperties {
-                                    up = playFocus
-                                    down = FocusRequester.Cancel
-                                    left = FocusRequester.Cancel
-                                    right = if (error != null) retryFocus else FocusRequester.Cancel
-                                },
-                        )
-                        if (error != null) DetailReadingLink(
-                            text = "Retry details",
-                            compact = compact,
-                            enabled = enabled,
-                            onClick = onRetry,
-                            modifier = Modifier.focusRequester(retryFocus)
-                                .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Retry }
-                                .focusProperties {
-                                    up = if (resume) startFocus else playFocus
-                                    down = FocusRequester.Cancel
-                                    left = moreFocus
-                                    right = FocusRequester.Cancel
-                                },
-                        )
-                    }
+                    DetailHeroCredits(movie, compact, Modifier.weight(if (compact) 0.27f else 0.33f))
                 }
             }
         } else {
-            Box(Modifier.fillMaxSize().background(CinemaColors.Canvas.copy(alpha = 0.9f)))
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.94f)))
             Column(
                 Modifier.fillMaxSize().padding(horizontal = edge, vertical = verticalEdge),
                 verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 24.dp),
@@ -356,6 +400,8 @@ internal fun MovieDetailsScreen(
                         )
                         if (genres.isNotBlank()) DetailSection("GENRES", genres, compact)
                         if (metadata.isNotBlank()) DetailSection("DETAILS", metadata, compact)
+                        if (ratings.isNotBlank()) DetailSection("RATINGS", ratings, compact)
+                        if (formats.isNotBlank()) DetailSection("SOURCE FORMATS", formats, compact)
                         if (error != null) DetailSection(
                             "DETAILS UNAVAILABLE", "Couldn’t refresh movie details. $error\nReturn to the movie to retry.", compact,
                         )
@@ -392,24 +438,102 @@ private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, activ
         animationSpec = tween(300),
         label = "detail backdrop",
     )
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(CinemaColors.Canvas, CinemaColors.Panel))))
+    Box(Modifier.fillMaxSize().background(Color.Black))
     if (painter != null) Image(
         painter = painter, contentDescription = null, contentScale = ContentScale.Crop,
         alignment = Alignment.TopEnd,
         modifier = Modifier.fillMaxSize().graphicsLayer { alpha = opacity.value },
     )
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
-        0f to CinemaColors.Canvas.copy(alpha = 0.97f),
-        0.36f to CinemaColors.Canvas.copy(alpha = 0.85f),
-        0.68f to CinemaColors.Canvas.copy(alpha = 0.25f),
-        1f to CinemaColors.Canvas.copy(alpha = 0.04f),
+    // Only the left text zone needs a side gradient; the upper/right picture remains untouched.
+    Box(Modifier.fillMaxWidth(0.72f).fillMaxSize().background(Brush.horizontalGradient(
+        0f to Color.Black.copy(alpha = 0.62f),
+        0.48f to Color.Black.copy(alpha = 0.35f),
+        1f to Color.Transparent,
     )))
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-        0f to CinemaColors.Canvas.copy(alpha = 0.25f),
-        0.3f to Color.Transparent,
-        0.7f to CinemaColors.Canvas.copy(alpha = 0.35f),
-        1f to CinemaColors.Canvas.copy(alpha = 0.96f),
+        0f to Color.Transparent,
+        0.28f to Color.Transparent,
+        0.64f to Color.Black.copy(alpha = 0.48f),
+        1f to Color.Black,
     )))
+}
+
+/** Title art is fitted, never cropped; the real title remains readable until artwork is available. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DetailTitle(
+    movie: PlexBrowseItem,
+    posters: PosterRepository,
+    active: Boolean,
+    compact: Boolean,
+    height: androidx.compose.ui.unit.Dp,
+) {
+    val logo = rememberMovieArtworkPainter(movie.logoPath, posters, width = 800, height = 310, active = active)
+    Box(Modifier.fillMaxWidth().height(height), contentAlignment = Alignment.CenterStart) {
+        if (logo != null) Image(
+            painter = logo,
+            contentDescription = movie.title,
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.CenterStart,
+            modifier = Modifier.fillMaxSize(),
+        ) else Text(
+            movie.title,
+            color = CinemaColors.Foreground,
+            fontSize = if (compact) 18.sp else 30.sp,
+            lineHeight = if (compact) 20.sp else 32.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DetailHeroCredits(movie: PlexBrowseItem, compact: Boolean, modifier: Modifier) {
+    Column(
+        modifier.padding(bottom = if (compact) 34.dp else 42.dp),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 12.dp),
+    ) {
+        if (movie.directors.isNotEmpty()) DetailHeroCredit(
+            "Directed by", movie.directors.take(if (compact) 1 else 2).joinToString(", "), compact,
+        )
+        if (movie.cast.isNotEmpty()) DetailHeroCredit(
+            "Starring", movie.cast.take(if (compact) 2 else 3).joinToString(", "), compact,
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun DetailHeroCredit(label: String, names: String, compact: Boolean) {
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, color = CinemaColors.Muted, fontSize = if (compact) 10.sp else 12.sp)
+        Text(
+            names,
+            color = CinemaColors.Foreground,
+            fontSize = if (compact) 11.sp else 14.sp,
+            lineHeight = if (compact) 14.sp else 19.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            maxLines = if (compact) 2 else 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A vector triangle avoids depending on whichever play glyph happens to exist in the TV font. */
+@Composable
+private fun DetailPlayIcon(compact: Boolean) {
+    Box(Modifier.size(if (compact) 12.dp else 15.dp).drawWithCache {
+        val triangle = Path().apply {
+            moveTo(size.width * 0.18f, 0f)
+            lineTo(size.width, size.height * 0.5f)
+            lineTo(size.width * 0.18f, size.height)
+            close()
+        }
+        onDrawBehind { drawPath(triangle, CinemaColors.Foreground) }
+    })
 }
 
 /** A quiet text action with a stable, high-contrast D-pad underline rather than another pill. */

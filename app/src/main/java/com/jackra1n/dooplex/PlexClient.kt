@@ -171,23 +171,27 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
+    /** Posters retain cover sizing; clear logos use transparent PNG with aspect-fit bounds. */
     fun artworkUrl(artworkPath: String, width: Int, height: Int): String {
-        require(THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)) {
+        val standardArtwork = THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)
+        val logo = !standardArtwork && PlexSourceMetadata.isLogoPath(artworkPath)
+        require(standardArtwork || logo) {
             "A safe Plex movie artwork path is required."
         }
         require(width in 1..MAX_ARTWORK_DIMENSION && height in 1..MAX_ARTWORK_DIMENSION) {
             "Plex artwork dimensions must be between 1 and 2048 pixels."
         }
-        return url(
-            "/photo/:/transcode",
-            linkedMapOf(
-                "url" to artworkPath,
-                "width" to width.toString(),
-                "height" to height.toString(),
-                "minSize" to "1",
-                "upscale" to "0",
-            ),
+        val parameters = linkedMapOf(
+            "url" to artworkPath,
+            "width" to width.toString(),
+            "height" to height.toString(),
+            "minSize" to if (logo) "0" else "1",
+            "upscale" to "0",
         )
+        if (logo) parameters["format"] = "png"
+        // Even a trusted hosted logo is fetched through this server endpoint, never with a
+        // credential-bearing direct request to an external URL. Redirects remain disabled.
+        return url("/photo/:/transcode", parameters)
     }
 
     private suspend fun readBrowsePage(
@@ -224,7 +228,7 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
-    private fun parseBrowseItem(item: JSONObject): PlexBrowseItem? {
+    private suspend fun parseBrowseItem(item: JSONObject): PlexBrowseItem? {
         val key = item.optString("ratingKey")
         val type = item.optString("type")
         if (!RATING_KEY.matches(key) || type !in BROWSE_TYPES) return null
@@ -236,7 +240,8 @@ class PlexClient(private val connection: PlexConnection) {
             }
             if (type == "season") add("${item.optInt("leafCount")} episodes")
         }.joinToString(" · ")
-        val media = item.optJSONArray("Media")?.optJSONObject(0)
+        val original = selectOriginal(item, required = false)
+        val media = original?.media
         val duration = item.optLong("duration", media?.optLong("duration", 0) ?: 0).coerceAtLeast(0)
         val offset = item.optLong("viewOffset", 0).coerceAtLeast(0)
         return PlexBrowseItem(
@@ -260,6 +265,10 @@ class PlexClient(private val connection: PlexConnection) {
             genres = item.tagNames("Genre"),
             directors = item.tagNames("Director"),
             cast = item.tagNames("Role"),
+            logoPath = PlexSourceMetadata.logo(item),
+            ratings = PlexSourceMetadata.ratings(item),
+            videoFormat = original?.let { PlexSourceMetadata.videoFormat(it.media, it.part) }.orEmpty(),
+            audioFormat = original?.let { PlexSourceMetadata.audioFormat(it.media, it.part) }.orEmpty(),
         )
     }
 
@@ -292,13 +301,46 @@ class PlexClient(private val connection: PlexConnection) {
         if (type != "movie" && type != "episode") {
             throw IOException("Choose a Plex movie or episode, not a collection, show, or season.")
         }
+        val original = selectOriginal(metadata, required = true)
+            ?: throw IOException("This Plex item has no accessible single-file original media.")
+        val version = original.media
+        val part = original.part
+        val partKey = part.optString("key")
+        var duration = version.optLong("duration", 0)
+        if (duration <= 0) duration = metadata.optLong("duration", 0)
+        if (duration <= 0) duration = part.optLong("duration", 0)
+        if (duration <= 0) throw IOException("Plex did not provide a usable media duration.")
+        val streamUrl = url(partKey, identity + ("X-Plex-Token" to connection.token))
+        currentCoroutineContext().ensureActive()
+        PlaybackMedia(
+            ratingKey = ratingKey,
+            title = metadata.optString("title").ifBlank { "Plex $type" },
+            durationMs = duration,
+            resumePositionMs = metadata.optLong("viewOffset", 0).coerceIn(0, duration),
+            streamUrl = streamUrl,
+            partKey = partKey,
+            mediaIndex = original.mediaIndex,
+            partIndex = 0,
+        )
+    }
+
+    private data class OriginalMedia(val media: JSONObject, val part: JSONObject, val mediaIndex: Int)
+
+    /**
+     * One original-file convention for details and playback: first non-proxy, direct, accessible
+     * single-file version in server order. Missing existence/access flags mean unknown, not false.
+     * Optional summaries omit unusable metadata; playback retains its actionable file errors.
+     */
+    private suspend fun selectOriginal(metadata: JSONObject, required: Boolean): OriginalMedia? {
         val versions = metadata.optJSONArray("Media")
-            ?: throw IOException("This Plex item has no original media file.")
+        if (versions == null) {
+            if (required) throw IOException("This Plex item has no original media file.")
+            return null
+        }
         var hasMultipart = false
         for (mediaIndex in 0 until versions.length()) {
             currentCoroutineContext().ensureActive()
             val version = versions.optJSONObject(mediaIndex) ?: continue
-            // Optimized/proxy versions are not the original file requested by this diagnostic.
             if (version.optInt("proxyType", 0) != 0 || version.isTrue("indirect")) continue
             val parts = version.optJSONArray("Part") ?: continue
             if (parts.length() > 1) {
@@ -310,28 +352,19 @@ class PlexClient(private val connection: PlexConnection) {
             if (part.isFalse("exists") || part.isFalse("accessible")) continue
             val partKey = part.optString("key")
             if (partKey.isEmpty()) continue
-            requirePartKey(partKey)
-            var duration = version.optLong("duration", 0)
-            if (duration <= 0) duration = metadata.optLong("duration", 0)
-            if (duration <= 0) duration = part.optLong("duration", 0)
-            if (duration <= 0) throw IOException("Plex did not provide a usable media duration.")
-            val streamUrl = url(partKey, identity + ("X-Plex-Token" to connection.token))
-            currentCoroutineContext().ensureActive()
-            return@withContext PlaybackMedia(
-                ratingKey = ratingKey,
-                title = metadata.optString("title").ifBlank { "Plex $type" },
-                durationMs = duration,
-                resumePositionMs = metadata.optLong("viewOffset", 0).coerceIn(0, duration),
-                streamUrl = streamUrl,
-                partKey = partKey,
-                mediaIndex = mediaIndex,
-                partIndex = 0,
-            )
+            if (!PART_KEY.matches(partKey)) {
+                if (required) requirePartKey(partKey)
+                return null
+            }
+            return OriginalMedia(version, part, mediaIndex)
         }
-        if (hasMultipart) {
-            throw IOException("Multipart original media is unsupported; choose a single-file version.")
+        if (required) {
+            if (hasMultipart) {
+                throw IOException("Multipart original media is unsupported; choose a single-file version.")
+            }
+            throw IOException("This Plex item has no accessible single-file original media.")
         }
-        throw IOException("This Plex item has no accessible single-file original media.")
+        return null
     }
 
     /** Call on actual state changes and at least every ten seconds while playback is observed. */

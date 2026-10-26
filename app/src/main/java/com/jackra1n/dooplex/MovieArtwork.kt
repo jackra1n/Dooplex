@@ -35,7 +35,11 @@ internal fun artworkBucket(pixels: Float): Int = when {
     else -> 512
 }
 
-/** Cache hits are synchronous; inactive artwork retains its image but never starts cold requests. */
+/**
+ * Cache hits are synchronous; inactive artwork retains its image but never starts cold requests.
+ * Clear logos share the bounded ARGB cache and aspect-fit PNG transcode; callers use ContentScale.Fit
+ * to keep transparent title artwork intact instead of applying the poster's crop.
+ */
 @Composable
 internal fun rememberMovieArtworkPainter(
     path: String?,

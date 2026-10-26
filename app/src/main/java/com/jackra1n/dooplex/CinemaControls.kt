@@ -21,14 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-/** A fixed-size, remote-friendly glass control. Focus never changes its layout geometry. */
+/** A dark, remote-friendly control with a crisp focus ring and stable layout geometry. */
 @Composable
 internal fun CinemaButton(
     onClick: () -> Unit,
@@ -42,9 +41,9 @@ internal fun CinemaButton(
     // Read animated values only in draw/layer lambdas, not in composition or measurement.
     val fill = animateFloatAsState(
         targetValue = when {
-            focused -> 0.23f
-            selected -> 0.12f
-            else -> 0.045f
+            focused -> 0.94f
+            selected -> 0.84f
+            else -> 0.68f
         },
         animationSpec = tween(140),
         label = "control fill",
@@ -64,15 +63,20 @@ internal fun CinemaButton(
             }
             .clip(shape)
             .drawWithCache {
-                val sheen = Brush.verticalGradient(
-                    listOf(CinemaColors.Foreground.copy(alpha = 0.065f), Color.Transparent),
-                )
+                val surface = Color.Black
                 onDrawBehind {
-                    drawRect(CinemaColors.Foreground, alpha = fill.value)
-                    drawRect(sheen)
+                    drawRect(surface, alpha = fill.value)
                 }
             }
-            .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.09f), shape)
+            .border(
+                width = if (focused) 1.5.dp else 1.dp,
+                color = CinemaColors.Foreground.copy(alpha = when {
+                    focused -> 0.95f
+                    selected -> 0.42f
+                    else -> 0.18f
+                }),
+                shape = shape,
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
