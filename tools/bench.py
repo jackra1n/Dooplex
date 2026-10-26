@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Drives a fixed key pattern on Dooplex's Home through the Zidoo's remote-control API and reports
-how smoothly the development build drew it, from its analytics.
+"""Drives a fixed key pattern on Dooplex through the Zidoo's remote-control API and reports how
+smoothly the development build drew it, from its analytics.
 
-    python3 tools/bench.py [--flags heromask=0,wash=1] [--seconds 40] [--label name]
+    python3 tools/bench.py [--pattern home|deep|movie|show] [--cold memory|disk] [--passes N]
+                           [--flags heromask=0,wash=1] [--label name]
 
-Needs `mise run receiver` and the app open on Home with focus on the hero; the pattern returns there.
-The switches go to analytics/flags, and the run starts only once the app reports them, so every frame
-in the window was drawn under the requested experiment. Results also append to analytics/bench.log.
+Needs `mise run receiver` and the app open on any screen. Each run starts from the same state: the
+app rebuilds Home (home, deep) or reopens the library (movie, show), after dropping its poster caches
+when --cold asks for it, and every further pass returns focus to the first item. "deep" visits new
+rows and cards on Home, for cold runs. Switches go to analytics/flags and commands to
+analytics/commands; the receiver hands both to the app. Results also append to analytics/bench.log.
 """
 import argparse
 import glob
@@ -20,9 +23,21 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ANALYTICS = ROOT / "analytics"
 ZIDOO = os.environ.get("ZIDOO_HOST", "<zidoo-ip>")
-PATTERN = ["Down"] + ["Right"] * 5 + ["Left"] * 5 + ["Down"] + ["Right"] * 5 + ["Left"] * 5 + ["Up", "Up"]
-STEP_S = 0.6
 FRAME_MS = 1000 / 60
+STEP = 0.6
+HELD = 0.08
+
+
+def keys(name, count, pause=STEP):
+    return [(name, pause)] * count
+
+
+PATTERNS = {
+    "home": (keys("Down", 1) + keys("Right", 5) + keys("Left", 5)) * 2 + keys("Up", 2),
+    "deep": (keys("Down", 1) + keys("Right", 10)) * 8,
+    "grid": keys("Down", 5) + keys("Down", 20, HELD) + keys("Up", 20, HELD) + keys("Up", 5)
+    + keys("Right", 3) + keys("Left", 3),
+}
 
 
 def send(key):
@@ -47,44 +62,88 @@ def now_ms():
     return int(time.time() * 1000)
 
 
-def wait_for_flags(wanted, timeout_s=30):
-    """An idle app draws no frames and so reports none; Right then Left (Play to Details and back)
-    makes it draw without paging the hero, until a frame report carries the requested flags."""
-    start = now_ms()
-    while now_ms() - start < timeout_s * 1000:
-        send("Right")
-        time.sleep(0.6)
-        send("Left")
-        time.sleep(1.4)
-        reports = [e for e in events(start) if e.get("event") == "frames"]
-        if reports and reports[-1].get("flags", "") == wanted:
-            return True
-    return False
+def wait_for(match, since_ms, timeout_s):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        found = [e for e in events(since_ms) if match(e)]
+        if found:
+            return found[-1]
+        time.sleep(0.5)
+    return None
+
+
+def command(words, ready, timeout_s=30):
+    """Sends commands through the receiver and returns (sent, ready) app events, once `ready` is."""
+    start = now_ms() - 5_000
+    (ANALYTICS / "commands").write_text(" ".join(words))
+    sent = wait_for(lambda e: e.get("event") == "command" and e.get("name") == words[-1], start, timeout_s)
+    if not sent:
+        raise SystemExit("The app did not pick up the command; is it open and `mise run receiver` running?")
+    done = wait_for(lambda e: e.get("event") == "ready" and e.get("what") == ready and e["t"] >= sent["t"],
+                    sent["t"], timeout_s)
+    if not done:
+        raise SystemExit(f"The app took over {timeout_s} s to become ready after {' '.join(words)}.")
+    time.sleep(1.0)
+    return sent, done
+
+
+def drive(pattern):
+    begin = now_ms()
+    sent = 0
+    for key, pause in pattern:
+        started = time.time()
+        send(key)
+        sent += 1
+        time.sleep(max(0, pause - (time.time() - started)))
+    time.sleep(0.6)
+    return begin, now_ms(), sent
+
+
+def stat(window, name):
+    parts = [e["values"][name] for e in window if e.get("event") == "stats" and name in e.get("values", {})]
+    count = sum(p["n"] for p in parts)
+    if not count:
+        return f"{name.split('.')[1]} 0"
+    mean = sum(p["n"] * p["mean"] for p in parts) / count
+    return f"{name.split('.')[1]} {count} (mean {mean:.0f} ms, max {max(p['max'] for p in parts):.0f} ms)"
 
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--pattern", choices=["home", "deep", "movie", "show"], default="home")
+    parser.add_argument("--cold", choices=["memory", "disk"])
+    parser.add_argument("--passes", type=int)
     parser.add_argument("--flags", default="")
-    parser.add_argument("--seconds", type=int, default=40)
     parser.add_argument("--label", default="")
     args = parser.parse_args()
+    passes = args.passes or (1 if args.cold or args.pattern == "deep" else 3)
+    screen = "home" if args.pattern in ("home", "deep") else args.pattern
+    pattern = PATTERNS["grid" if screen != "home" else args.pattern]
     ANALYTICS.mkdir(exist_ok=True)
+
     (ANALYTICS / "flags").write_text(args.flags)
-    if not wait_for_flags(args.flags):
+    if not wait_for(lambda e: e.get("event") == "frames" and e.get("flags", "") == args.flags, now_ms(), 15):
         raise SystemExit("The app did not report the requested flags; is it open and `mise run receiver` running?")
-    begin = now_ms()
-    steps = 0
-    while now_ms() - begin < args.seconds * 1000:
-        send(PATTERN[steps % len(PATTERN)])
-        steps += 1
-        time.sleep(STEP_S)
-    end = now_ms()
+    setup = ([f"clear-{args.cold}"] if args.cold else []) + ["home" if screen == "home" else f"open:{screen}"]
+    sent, done = command(setup, screen)
+    opened = (done["t"] - sent["t"]) / 1000
+
+    windows, steps = [], 0
+    for index in range(passes):
+        if index:
+            command(["focus"], screen)
+        begin, end, count = drive(pattern)
+        windows.append((begin, end))
+        steps += count
     time.sleep(9)
-    window = [e for e in events(begin) if e.get("t", 0) <= end + 4_500]
-    frames = sum(e["count"] for e in window if e.get("event") == "frames")
-    slow_total = sum(e["slow"] for e in window if e.get("event") == "frames")
-    slow = [e for e in window if e.get("event") == "slow-frame" and e["t"] <= end]
-    keys = sum(1 for e in window if e.get("event") == "key" and e["t"] <= end)
+
+    found = events(windows[0][0])
+    inside = [e for e in found if any(b <= e["t"] <= e_ for b, e_ in windows)]
+    flushed = [e for e in found if any(b <= e["t"] <= e_ + 4_500 for b, e_ in windows)]
+    frames = sum(e["count"] for e in flushed if e.get("event") == "frames")
+    slow_total = sum(e["slow"] for e in flushed if e.get("event") == "frames")
+    slow = [e for e in inside if e.get("event") == "slow-frame"]
+    pressed = sum(1 for e in inside if e.get("event") == "key")
     times = sorted(e["ms"] for e in slow)
     over = sum(ms - FRAME_MS for ms in times)
 
@@ -94,14 +153,15 @@ def main():
     def pct(p):
         return times[min(len(times) - 1, int(len(times) * p))] if times else 0
 
-    label = args.label or args.flags or "defaults"
+    label = args.label or " ".join(filter(None, [args.pattern, args.cold and f"cold={args.cold}", args.flags]))
     lines = [
-        f"{time.strftime('%H:%M:%S')} {label}: {frames} frames, {slow_total} slow ({100 * slow_total / max(frames, 1):.1f}%), "
-        f"{over:.0f} ms over budget, keys {keys}/{steps}",
+        f"{time.strftime('%H:%M:%S')} {label}: ready {opened:.1f} s; {frames} frames, {slow_total} slow "
+        f"({100 * slow_total / max(frames, 1):.1f}%), {over:.0f} ms over budget, keys {pressed}/{steps}",
         f"  slow frames p50 {pct(.5):.1f} p90 {pct(.9):.1f} max {pct(1):.1f} ms; "
         f"median anim {median('anim')} draw {median('draw')} sync {median('sync')} cmd {median('cmd')} swap {median('swap')}",
+        f"  posters: {stat(flushed, 'poster.wait.ms')}; {stat(flushed, 'poster.network.ms')}; {stat(flushed, 'poster.disk.ms')}",
     ]
-    print("\n".join(lines))
+    print("\n".join(lines), flush=True)
     with open(ANALYTICS / "bench.log", "a") as log:
         log.write("\n".join(lines) + "\n")
 
