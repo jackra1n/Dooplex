@@ -113,10 +113,6 @@ import kotlinx.coroutines.launch
 
 private const val MOVIE_GRID_HEADER_ITEMS = 1
 
-// TV's default pivot scrolls even fully visible cards; horizontal moves must leave the row still.
-@OptIn(ExperimentalFoundationApi::class)
-private val MovieGridBringIntoViewSpec = object : BringIntoViewSpec {}
-
 private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
     snapshotFlow { layoutInfo.totalItemsCount }.first { it > index }
     scroll {
@@ -149,6 +145,7 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
  * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
  * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
  * Vertical DPAD targets retain their column and take focus when visible, without waiting for scroll completion.
+ * Directional reveals own scrolling until completion so early focus cannot replace their animation.
  * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -174,6 +171,13 @@ fun MoviesScreen(
     var detailsIndex by remember(state) { mutableStateOf<Int?>(null) }
     var pendingFocusIndex by remember(state) { mutableStateOf<Int?>(null) }
     var directionalFocus by remember(state) { mutableStateOf(false) }
+    val gridBringIntoView = remember(state) {
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                // A directional reveal owns the animation; focus must not start a competing scroll.
+                if (directionalFocus) 0f else super.calculateScrollDistance(offset, size, containerSize)
+        }
+    }
     var sortOpen by remember { mutableStateOf(false) }
     var restoreToSort by remember { mutableStateOf(false) }
     var restoreEpoch by remember { mutableIntStateOf(0) }
@@ -267,24 +271,35 @@ fun MoviesScreen(
             (!needsFocus && (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
         val focusEpoch = restoreEpoch
         if (restoreToSort) {
-            grid.scrollToItem(0)
-            snapshotFlow { headerMounted }.first { it }
-            withFrameNanos { }
-            if (restoreEpoch != focusEpoch) return@LaunchedEffect
-            sortFocus.requestFocus()
+            coroutineScope {
+                if (directionalFocus) launch { grid.animateScrollToItem(0) } else grid.scrollToItem(0)
+                snapshotFlow {
+                    headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 }
+                }.first { it }
+                withFrameNanos { }
+                if (needsFocus && restoreEpoch == focusEpoch) sortFocus.requestFocus()
+            }
         } else if (state.total > 0 || state.loading) {
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
             val gridIndex = target + MOVIE_GRID_HEADER_ITEMS
             coroutineScope {
-                if (grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
-                    if (directionalFocus) {
-                        val layout = grid.layoutInfo
-                        val cardHeight = layout.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
-                            ?.size?.height ?: 0
-                        val offset = if (gridIndex > grid.firstVisibleItemIndex)
-                            -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
-                        launch { grid.animateScrollToItem(gridIndex, offset) }
-                    } else grid.scrollToItem(gridIndex)
+                val layout = grid.layoutInfo
+                val visible = layout.visibleItemsInfo.firstOrNull { it.index == gridIndex }
+                if (directionalFocus) {
+                    val below = visible?.let { it.offset.y + it.size.height > layout.viewportEndOffset }
+                        ?: (gridIndex > grid.firstVisibleItemIndex)
+                    val above = visible?.let { it.offset.y < layout.viewportStartOffset } ?: !below
+                    if (above || below) {
+                        val cardHeight = visible?.size?.height ?: layout.visibleItemsInfo
+                            .firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }?.size?.height
+                            ?: (layout.viewportEndOffset - layout.viewportStartOffset)
+                        val offset = if (below) -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
+                        // Animate the row leader: lazy-grid overshoot checks compare against its first index.
+                        val rowStart = MOVIE_GRID_HEADER_ITEMS + target / layout.maxSpan * layout.maxSpan
+                        launch { grid.animateScrollToItem(rowStart, offset) }
+                    }
+                } else if (visible == null) {
+                    grid.scrollToItem(gridIndex)
                 }
                 val requester = snapshotFlow {
                     requesters[target]?.takeIf { grid.layoutInfo.visibleItemsInfo.any { it.index == gridIndex } }
@@ -429,7 +444,7 @@ fun MoviesScreen(
         }
 
         Row(Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalBringIntoViewSpec provides MovieGridBringIntoViewSpec) {
+            CompositionLocalProvider(LocalBringIntoViewSpec provides gridBringIntoView) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns),
                     state = grid,
@@ -514,7 +529,7 @@ fun MoviesScreen(
                                     } else if (controlsEnabled && event.key == Key.DirectionUp && pendingFocusIndex != null) {
                                         if (event.type == KeyEventType.KeyDown) {
                                             pendingFocusIndex = null
-                                            directionalFocus = false
+                                            directionalFocus = true
                                             restoreToSort = true
                                             needsFocus = true
                                             restoreEpoch++
