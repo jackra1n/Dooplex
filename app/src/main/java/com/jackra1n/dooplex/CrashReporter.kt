@@ -54,8 +54,6 @@ internal object CrashReporter {
         }
         // Waiting here lets an app that crashes right after launch still deliver the previous crash.
         thread(name = "crash-reporter") {
-            val installed = Instant.ofEpochMilli(context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime)
-            send(url, "Launched build installed at $installed on ${Build.MODEL}")
             if (pending.exists() && send(url, pending.readText())) pending.delete()
             reportPreviousExits(context, url)
         }.join(STARTUP_WAIT_MS)

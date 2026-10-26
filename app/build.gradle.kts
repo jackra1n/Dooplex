@@ -17,6 +17,8 @@ android {
         versionName = "1.0"
         val crashReportUrl = providers.environmentVariable("DOOPLEX_CRASH_URL").getOrElse("")
         buildConfigField("String", "CRASH_REPORT_URL", "\"$crashReportUrl\"")
+        val analyticsUrl = providers.environmentVariable("DOOPLEX_ANALYTICS_URL").getOrElse("")
+        buildConfigField("String", "ANALYTICS_URL", "\"$analyticsUrl\"")
 
     }
 

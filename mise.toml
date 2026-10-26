@@ -1,9 +1,9 @@
 [tasks.build]
-description = "Build an optimized APK signed with the existing Android development key; crash reports stay off unless DOOPLEX_CRASH_URL is set"
+description = "Build an optimized APK signed with the existing Android development key; crash reports and analytics stay off unless DOOPLEX_CRASH_URL / DOOPLEX_ANALYTICS_URL are set"
 shell = "bash -c"
 run = '''
 set -euo pipefail
-printf 'Crash reports: %s\n' "${DOOPLEX_CRASH_URL:-off}"
+printf 'Crash reports: %s\nAnalytics: %s\n' "${DOOPLEX_CRASH_URL:-off}" "${DOOPLEX_ANALYTICS_URL:-off}"
 ./gradlew :app:assembleRelease :app:validateSigningDebug
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 signer="${APKSIGNER:-$sdk/build-tools/36.0.0/apksigner}"
@@ -18,7 +18,7 @@ printf 'Built %s\n' "$apk"
 '''
 
 [tasks.upload]
-description = "Build a development APK that reports crashes to this PC and submit it to the Zidoo web installer; override the address with ZIDOO_URL"
+description = "Build a development APK that reports crashes and analytics to this PC and submit it to the Zidoo web installer; override the address with ZIDOO_URL"
 shell = "bash -c"
 run = '''
 set -euo pipefail
@@ -26,8 +26,9 @@ target="${ZIDOO_URL:-http://<zidoo-ip>:18888}"
 host="${target#*://}"
 host="${host%%[:/]*}"
 pc=$(ip -4 route get "$host" 2>/dev/null | sed -nE 's/.* src ([0-9.]+).*/\1/p')
-# Only these development installs send crashes, to `mise run crashes` on this PC; DOOPLEX_CRASH_URL= turns them off.
-DOOPLEX_CRASH_URL="${DOOPLEX_CRASH_URL-${pc:+http://$pc:8797/crash}}" mise run build
+# Only these development installs report to `mise run receiver` on this PC; set either variable empty to turn it off.
+DOOPLEX_CRASH_URL="${DOOPLEX_CRASH_URL-${pc:+http://$pc:8797/crash}}" \
+  DOOPLEX_ANALYTICS_URL="${DOOPLEX_ANALYTICS_URL-${pc:+http://$pc:8797/events}}" mise run build
 response=$(mktemp)
 trap 'rm -f "$response"' EXIT
 # Web Install installs the APK and then fails in its own multipart parser, so browsers get this 400 too.
@@ -46,6 +47,6 @@ fi
 printf 'APK delivered to the Zidoo; it installs in the background.\n'
 '''
 
-[tasks.crashes]
-description = "Receive crash reports from development builds on port 8797"
-run = "python3 tools/crash-receiver.py"
+[tasks.receiver]
+description = "Receive crash reports and analytics from development builds on port 8797"
+run = "python3 tools/dev-receiver.py"

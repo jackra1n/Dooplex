@@ -1,10 +1,12 @@
 package com.jackra1n.dooplex
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        FrameReporter.install(this)
+        Analytics.start(this)
         // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
         window.setBackgroundDrawable(null)
         store = PlexAccountStore(this)
@@ -79,6 +81,17 @@ class MainActivity : ComponentActivity() {
                         home != null -> "home"
                         child != null -> "show:${child.path}"
                         else -> "library:${library?.key}"
+                    }
+                    val screen = when {
+                        home != null -> if (home.selectedMovie != null) "home/details" else "home"
+                        child != null -> "show/${child.level.name.lowercase()}"
+                        library != null -> "library/${library.type}" + if (movieLibrary?.selectedMovie != null && library.type == "movie") "/details" else ""
+                        else -> "titles"
+                    }
+                    LaunchedEffect(screen) {
+                        Analytics.screen = screen
+                        Analytics.mark("screen:$screen")
+                        Analytics.event("screen")
                     }
                     val navigation: @Composable () -> Unit = {
                         CollectionNavigationBar(
@@ -157,6 +170,10 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else {
+                    LaunchedEffect(state.stage) {
+                        Analytics.screen = state.stage.name.lowercase()
+                        Analytics.event("screen")
+                    }
                     PlexBrowserScreen(
                         state = state,
                         playback = playback,
@@ -196,6 +213,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            Analytics.mark("key:" + KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_") +
+                if (event.repeatCount > 0) "+held" else "")
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun linkAccount() {
         runAction {
             state = PlexBrowserState(busy = true)
