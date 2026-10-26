@@ -50,3 +50,12 @@ printf 'APK delivered to the Zidoo; it installs in the background.\n'
 [tasks.receiver]
 description = "Receive crash reports and analytics from development builds on port 8797"
 run = "python3 tools/dev-receiver.py"
+
+[tasks.trace]
+description = "Ask the running development build for a CPU trace (TRACE_SECONDS, default 10) via `mise run receiver`"
+shell = "bash -c"
+run = '''
+mkdir -p analytics
+echo "${TRACE_SECONDS:-10}" > analytics/trace-request
+printf 'Requested a %s s trace; it starts with the next analytics upload (within 4 s).\n' "${TRACE_SECONDS:-10}"
+'''

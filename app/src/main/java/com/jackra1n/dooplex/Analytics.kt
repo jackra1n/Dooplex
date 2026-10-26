@@ -9,6 +9,10 @@ import android.os.HandlerThread
 import android.os.Process
 import android.os.SystemClock
 import android.view.FrameMetrics
+import java.io.File
+import java.io.OutputStream
+import java.net.HttpURLConnection
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import org.json.JSONObject
@@ -24,8 +28,14 @@ internal object Analytics {
     private const val FLUSH_MS = 4_000L
     private const val CAUSE_MS = 600L
     private const val MEMORY_EVERY = 8
+    private const val TRACE_BUFFER = 96 * 1024 * 1024
+    private const val TRACE_INTERVAL_US = 1_000
     private val url = BuildConfig.ANALYTICS_URL
+    private val traceUrl = url.removeSuffix("/events") + "/trace"
     val enabled = url.isNotEmpty()
+    private lateinit var handler: Handler
+    private lateinit var traceFile: File
+    private var tracing = false
     private val queue = ConcurrentLinkedQueue<String>()
     private val samples = ConcurrentHashMap<String, Sample>()
     @Volatile private var cause = ""
@@ -40,7 +50,8 @@ internal object Analytics {
 
     fun start(activity: Activity) {
         if (!enabled) return
-        val handler = Handler(HandlerThread("analytics").apply { start() }.looper)
+        handler = Handler(HandlerThread("analytics").apply { start() }.looper)
+        traceFile = File(activity.cacheDir, "dev.trace")
         val render = activity.resources.displayMetrics
         val mode = activity.display?.mode
         val refresh = mode?.refreshRate ?: 60f
@@ -67,6 +78,7 @@ internal object Analytics {
                 event(
                     "slow-frame",
                     "ms" to total.ms(),
+                    "vsyncUs" to metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) / 1000,
                     "cause" to recentCause(),
                     "delay" to metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION).ms(),
                     "anim" to metrics.getMetric(FrameMetrics.ANIMATION_DURATION).ms(),
@@ -159,7 +171,50 @@ internal object Analytics {
         if (queue.isEmpty()) return
         val lines = ArrayList<String>()
         while (true) lines += queue.poll() ?: break
-        if (!CrashReporter.send(url, lines.joinToString("\n"))) lines.takeLast(500).forEach { queue += it }
+        val body = lines.joinToString("\n").toByteArray()
+        val reply = post(url, body.size.toLong()) { it.write(body) }
+        if (reply == null) lines.takeLast(500).forEach { queue += it }
+        // The receiver answers "trace <seconds>" when a CPU trace was requested with `mise run trace`.
+        reply?.takeIf { it.startsWith("trace ") }?.removePrefix("trace ")?.trim()?.toIntOrNull()?.let { trace(it.coerceIn(1, 60)) }
+    }
+
+    /** ART's sampling profiler: every thread's stack each millisecond, uploaded for tools/trace-report.py. */
+    private fun trace(seconds: Int) {
+        if (tracing) return
+        traceFile.delete()
+        try {
+            Debug.startMethodTracingSampling(traceFile.path, TRACE_BUFFER, TRACE_INTERVAL_US)
+        } catch (failure: RuntimeException) {
+            event("trace-failed", "error" to failure.toString())
+            return
+        }
+        tracing = true
+        event("trace-start", "seconds" to seconds, "monoUs" to System.nanoTime() / 1000)
+        handler.postDelayed({
+            Debug.stopMethodTracing()
+            tracing = false
+            val bytes = traceFile.length()
+            val uploaded = post(traceUrl, bytes, timeoutMs = 120_000) { out -> traceFile.inputStream().use { it.copyTo(out) } } != null
+            event("trace-done", "bytes" to bytes, "uploaded" to uploaded)
+            traceFile.delete()
+        }, seconds * 1000L)
+    }
+
+    private fun post(target: String, length: Long, timeoutMs: Int = 5_000, write: (OutputStream) -> Unit): String? = try {
+        val http = URI(target).toURL().openConnection() as HttpURLConnection
+        try {
+            http.requestMethod = "POST"
+            http.connectTimeout = 3_000
+            http.readTimeout = timeoutMs
+            http.doOutput = true
+            http.setFixedLengthStreamingMode(length)
+            http.outputStream.use(write)
+            if (http.responseCode in 200..299) http.inputStream.use { String(it.readBytes()) } else null
+        } finally {
+            http.disconnect()
+        }
+    } catch (_: Exception) {
+        null
     }
 
     private fun Long.ms() = (this / 1e5).toLong() / 10.0
