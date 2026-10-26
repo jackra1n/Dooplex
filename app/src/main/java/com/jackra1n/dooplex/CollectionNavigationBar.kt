@@ -166,8 +166,9 @@ internal fun CollectionNavigationBar(
         }
     }
     var focusedType by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeType, focus.navigationEpoch) {
-        focus.navigationType?.let { focus.tab(it).requestFocus() }
+    val visible = LocalScreenVisible.current
+    LaunchedEffect(activeType, focus.navigationEpoch, visible) {
+        if (visible) focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
     val density = LocalDensity.current
     val unit = LocalConfiguration.current.screenWidthDp.dp / 1920f
@@ -237,7 +238,7 @@ internal fun CollectionNavigationBar(
                 Box(
                     Modifier.width(with(density) { tabWidths[index].toDp() })
                         .height(with(density) { pillHeight.toDp() })
-                        .focusRequester(focus.tab(type))
+                        .then(if (visible) Modifier.focusRequester(focus.tab(type)) else Modifier)
                         .onPreviewKeyEvent { event ->
                             when (event.key) {
                                 Key.DirectionDown -> {

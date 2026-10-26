@@ -182,7 +182,6 @@ internal fun CollectionScreen(
     var restoreToHeader by remember { mutableStateOf(false) }
     var restoreEpoch by remember { mutableIntStateOf(0) }
     var needsFocus by remember { mutableStateOf(true) }
-    var wasPlaying by remember { mutableStateOf(playbackRunning) }
     var lastGeneration by remember(state) { mutableIntStateOf(state.generation) }
     var artworkRange by remember(state.generation) { mutableStateOf(IntRange.EMPTY) }
     var lookahead by remember(state.generation) { mutableStateOf<IntProgression>(IntRange.EMPTY) }
@@ -240,147 +239,153 @@ internal fun CollectionScreen(
         restoreGrid()
     }
 
-    LaunchedEffect(state, focus.navigationType, focus.navigationEpoch) {
-        if (focus.navigationType == null) return@LaunchedEffect
-        if (navigationViewportIndex < 0) {
-            navigationViewportIndex = grid.firstVisibleItemIndex
-            navigationViewportOffset = grid.firstVisibleItemScrollOffset
-        }
-        needsFocus = false
-        pendingFocusIndex = null
-        restoreToHeader = false
-        directionalFocus = false
-        railRestorePending = false
-        restoreEpoch++
-        grid.scrollToItem(0)
-        snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
-        withFrameNanos { }
-        focus.navigationType?.let { focus.tab(it).requestFocus() }
-    }
-    // A confirmed tab lands on the first poster with the page at its top. The grid must have laid
-    // out first, or the restore below would scroll the "unseen" poster to the top of the screen.
-    LaunchedEffect(state, focus.contentEpoch) {
-        val type = state.library.type
-        if (focus.contentType != type) return@LaunchedEffect
-        grid.scrollToItem(0)
-        snapshotFlow { grid.layoutInfo.visibleItemsInfo.any { it.index == COLLECTION_GRID_HEADER_ITEMS } }.first { it }
-        focusedIndex = 0
-        pendingFocusIndex = 0
-        navigationViewportIndex = -1
-        restoreToHeader = false
-        directionalFocus = true
-        needsFocus = true
-        restoreEpoch++
-        focus.completeContent(type)
-    }
-    LaunchedEffect(route, focus.headerEpoch, playbackRunning, modalOpen) {
-        if (focus.headerRoute != route || playbackRunning || modalOpen) return@LaunchedEffect
-        needsFocus = true
-        restoreToHeader = true
-        directionalFocus = false
-        restoreEpoch++
-    }
-
-    LaunchedEffect(state.generation) {
-        if (lastGeneration != state.generation) {
-            lastGeneration = state.generation
-            focusedIndex = state.jumpRequest?.index ?: 0
-            navigationViewportIndex = -1
-            pendingFocusIndex = focusedIndex
-            needsFocus = focus.navigationType == null && !railHasFocus && !awaitingJump && !railRestorePending
+    // Hidden in a kept screen or behind playback, the page requests no focus. Only this scope reads
+    // visibility, so a tab switch never recomposes the cards.
+    WhenVisible { visible ->
+        val interactive = !playbackRunning && visible
+        var wasIdle by remember { mutableStateOf(!interactive) }
+        LaunchedEffect(state, focus.navigationType, focus.navigationEpoch, visible) {
+            if (focus.navigationType == null || !visible) return@LaunchedEffect
+            if (navigationViewportIndex < 0) {
+                navigationViewportIndex = grid.firstVisibleItemIndex
+                navigationViewportOffset = grid.firstVisibleItemScrollOffset
+            }
+            needsFocus = false
+            pendingFocusIndex = null
+            restoreToHeader = false
+            directionalFocus = false
+            railRestorePending = false
             restoreEpoch++
-            if (state.jumpRequest == null) grid.scrollToItem(0)
+            grid.scrollToItem(0)
+            snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
+            withFrameNanos { }
+            focus.navigationType?.let { focus.tab(it).requestFocus() }
         }
-    }
-    LaunchedEffect(state.jumpRequest?.id) {
-        val jump = state.jumpRequest ?: return@LaunchedEffect
-        focusedIndex = jump.index
-        restoreToHeader = false
-        grid.scrollToCollectionLetter(jump.index + COLLECTION_GRID_HEADER_ITEMS)
-        awaitingJump = false
-        pendingFocusIndex = null
-        if (returnAfterJump || !railHasFocus && !railRestorePending) restoreGrid()
-        state.completeJump(jump.id)
-    }
-    LaunchedEffect(playbackRunning) {
-        if (wasPlaying && !playbackRunning && focus.navigationType == null) {
+        // A confirmed tab lands on the first poster with the page at its top. The grid must have laid
+        // out first, or the restore below would scroll the "unseen" poster to the top of the screen.
+        LaunchedEffect(state, focus.contentEpoch) {
+            val type = state.library.type
+            if (focus.contentType != type) return@LaunchedEffect
+            grid.scrollToItem(0)
+            snapshotFlow { grid.layoutInfo.visibleItemsInfo.any { it.index == COLLECTION_GRID_HEADER_ITEMS } }.first { it }
+            focusedIndex = 0
+            pendingFocusIndex = 0
+            navigationViewportIndex = -1
+            restoreToHeader = false
+            directionalFocus = true
             needsFocus = true
             restoreEpoch++
+            focus.completeContent(type)
         }
-        wasPlaying = playbackRunning
-    }
-    LaunchedEffect(railRestorePending, alphabet, state.alphabetLoading, state.alphabetError, playbackRunning, modalOpen) {
-        if (!railRestorePending || playbackRunning || modalOpen) return@LaunchedEffect
-        withFrameNanos { }
-        val key = lastRailKey?.takeIf { it in railRequesters } ?: alphabet.firstOrNull()?.key
-        val requester = if (state.alphabetError != null) railStatusFocus else railRequesters[key] ?: railStatusFocus
-        requester.requestFocus()
-        if (!state.alphabetLoading) railRestorePending = false
-    }
-    // No focus requests are keyed to page fills, details refreshes, or playback position reports.
-    LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading, focus.navigationType, focus.headerRoute, focus.contentType) {
-        if (focus.navigationType != null || focus.contentType == state.library.type || focus.headerRoute?.let { it != route } == true ||
-            playbackRunning || modalOpen || !needsFocus && !restoreToHeader) return@LaunchedEffect
-        val focusEpoch = restoreEpoch
-        if (restoreToHeader) {
-            coroutineScope {
-                if (directionalFocus) scroller.showHeader() else grid.scrollToItem(0)
-                snapshotFlow {
-                    headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 }
-                }.first { it }
-                withFrameNanos { }
-                if (needsFocus && restoreEpoch == focusEpoch) {
-                    (if (focus.headerRoute == route) {
-                        if (libraries.size > 1) libraryFocus else sortFocus
-                    } else sortFocus).requestFocus()
-                    focus.completeHeader(route)
-                }
-            }
-        } else if (state.total > 0 || state.loading) {
-            if (!directionalFocus && navigationViewportIndex >= 0) {
-                grid.scrollToItem(navigationViewportIndex, navigationViewportOffset)
-                navigationViewportIndex = -1
-            }
-            val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
-            val gridIndex = target + COLLECTION_GRID_HEADER_ITEMS
-            coroutineScope {
-                // Directional moves are already gliding on the row scroller.
-                if (!directionalFocus && grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
-                    grid.scrollToItem(gridIndex)
-                }
-                val requester = snapshotFlow {
-                    requesters[target]?.takeIf { grid.layoutInfo.visibleItemsInfo.any { it.index == gridIndex } }
-                }.filterNotNull().first()
-                withFrameNanos { }
-                if (needsFocus && restoreEpoch == focusEpoch) {
-                    focusedIndex = target
-                    requester.requestFocus()
-                }
-            }
-        } else {
-            grid.scrollToItem(0)
-            snapshotFlow { headerMounted }.first { it }
-            withFrameNanos { }
-            if (restoreEpoch != focusEpoch) return@LaunchedEffect
-            backFocus.requestFocus()
+        LaunchedEffect(route, focus.headerEpoch, interactive, modalOpen) {
+            if (focus.headerRoute != route || !interactive || modalOpen) return@LaunchedEffect
+            needsFocus = true
+            restoreToHeader = true
+            directionalFocus = false
+            restoreEpoch++
         }
-        if (restoreEpoch != focusEpoch) return@LaunchedEffect
-        pendingFocusIndex = null
-        needsFocus = false
-        restoreToHeader = false
-        directionalFocus = false
-    }
 
-    BackHandler(enabled = !playbackRunning && selected == null) {
-        when {
-            sortOpen -> {
-                sortOpen = false
-                restoreToHeader = true
+        LaunchedEffect(state.generation) {
+            if (lastGeneration != state.generation) {
+                lastGeneration = state.generation
+                focusedIndex = state.jumpRequest?.index ?: 0
+                navigationViewportIndex = -1
+                pendingFocusIndex = focusedIndex
+                needsFocus = focus.navigationType == null && !railHasFocus && !awaitingJump && !railRestorePending
+                restoreEpoch++
+                if (state.jumpRequest == null) grid.scrollToItem(0)
+            }
+        }
+        LaunchedEffect(state.jumpRequest?.id) {
+            val jump = state.jumpRequest ?: return@LaunchedEffect
+            focusedIndex = jump.index
+            restoreToHeader = false
+            grid.scrollToCollectionLetter(jump.index + COLLECTION_GRID_HEADER_ITEMS)
+            awaitingJump = false
+            pendingFocusIndex = null
+            if (returnAfterJump || !railHasFocus && !railRestorePending) restoreGrid()
+            state.completeJump(jump.id)
+        }
+        LaunchedEffect(interactive) {
+            if (wasIdle && interactive && focus.navigationType == null) {
                 needsFocus = true
                 restoreEpoch++
             }
-            railHasFocus -> leaveAlphabet()
-            else -> onBack()
+            wasIdle = !interactive
+        }
+        LaunchedEffect(railRestorePending, alphabet, state.alphabetLoading, state.alphabetError, interactive, modalOpen) {
+            if (!railRestorePending || !interactive || modalOpen) return@LaunchedEffect
+            withFrameNanos { }
+            val key = lastRailKey?.takeIf { it in railRequesters } ?: alphabet.firstOrNull()?.key
+            val requester = if (state.alphabetError != null) railStatusFocus else railRequesters[key] ?: railStatusFocus
+            requester.requestFocus()
+            if (!state.alphabetLoading) railRestorePending = false
+        }
+        // No focus requests are keyed to page fills, details refreshes, or playback position reports.
+        LaunchedEffect(restoreEpoch, interactive, modalOpen, state.total, state.loading, focus.navigationType, focus.headerRoute, focus.contentType) {
+            if (focus.navigationType != null || focus.contentType == state.library.type || focus.headerRoute?.let { it != route } == true ||
+                !interactive || modalOpen || !needsFocus && !restoreToHeader) return@LaunchedEffect
+            val focusEpoch = restoreEpoch
+            if (restoreToHeader) {
+                coroutineScope {
+                    if (directionalFocus) scroller.showHeader() else grid.scrollToItem(0)
+                    snapshotFlow {
+                        headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 }
+                    }.first { it }
+                    withFrameNanos { }
+                    if (needsFocus && restoreEpoch == focusEpoch) {
+                        (if (focus.headerRoute == route) {
+                            if (libraries.size > 1) libraryFocus else sortFocus
+                        } else sortFocus).requestFocus()
+                        focus.completeHeader(route)
+                    }
+                }
+            } else if (state.total > 0 || state.loading) {
+                if (!directionalFocus && navigationViewportIndex >= 0) {
+                    grid.scrollToItem(navigationViewportIndex, navigationViewportOffset)
+                    navigationViewportIndex = -1
+                }
+                val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
+                val gridIndex = target + COLLECTION_GRID_HEADER_ITEMS
+                coroutineScope {
+                    // Directional moves are already gliding on the row scroller.
+                    if (!directionalFocus && grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
+                        grid.scrollToItem(gridIndex)
+                    }
+                    val requester = snapshotFlow {
+                        requesters[target]?.takeIf { grid.layoutInfo.visibleItemsInfo.any { it.index == gridIndex } }
+                    }.filterNotNull().first()
+                    withFrameNanos { }
+                    if (needsFocus && restoreEpoch == focusEpoch) {
+                        focusedIndex = target
+                        requester.requestFocus()
+                    }
+                }
+            } else {
+                grid.scrollToItem(0)
+                snapshotFlow { headerMounted }.first { it }
+                withFrameNanos { }
+                if (restoreEpoch != focusEpoch) return@LaunchedEffect
+                backFocus.requestFocus()
+            }
+            if (restoreEpoch != focusEpoch) return@LaunchedEffect
+            pendingFocusIndex = null
+            needsFocus = false
+            restoreToHeader = false
+            directionalFocus = false
+        }
+
+        BackHandler(enabled = interactive && selected == null) {
+            when {
+                sortOpen -> {
+                    sortOpen = false
+                    restoreToHeader = true
+                    needsFocus = true
+                    restoreEpoch++
+                }
+                railHasFocus -> leaveAlphabet()
+                else -> onBack()
+            }
         }
     }
 

@@ -69,8 +69,9 @@ internal fun MovieBackdrop(
     val artworkHeight = artworkWidth * 3 / 2
     var loaded by remember(posters, path, artworkWidth) { mutableStateOf<MovieAtmosphere?>(null) }
     val cached = path?.let { posters.cachedAtmosphere(it, artworkWidth, artworkHeight) }
-    LaunchedEffect(posters, path, artworkWidth, active) {
-        if (!active || path == null || cached != null) return@LaunchedEffect
+    val shown = active && LocalScreenVisible.current
+    LaunchedEffect(posters, path, artworkWidth, shown) {
+        if (!shown || path == null || cached != null) return@LaunchedEffect
         try {
             posters.load(path, artworkWidth, artworkHeight)
             currentCoroutineContext().ensureActive()

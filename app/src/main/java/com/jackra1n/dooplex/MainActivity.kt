@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -118,41 +119,54 @@ class MainActivity : ComponentActivity() {
                             onDown = { collectionFocus.enterHeader(route) },
                         )
                     }
-                    if (home != null) {
-                        destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
-                            HomeScreen(
-                                state = home,
-                                posters = posters,
-                                navigation = navigation,
-                                focus = collectionFocus,
-                                enabled = !blocked,
-                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                onOpen = ::openFromHome,
-                                onBack = ::showSources,
-                                onReady = {
-                                    homeReady = true
-                                    Analytics.event("ready", "what" to "home")
-                                },
-                            )
+                    val shown = when {
+                        home != null -> "home"
+                        child != null -> "child"
+                        else -> library?.type
+                    }
+                    homeState?.let { kept ->
+                        key(kept) {
+                            KeptScreen(shown == "home") {
+                                destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
+                                    HomeScreen(
+                                        state = kept,
+                                        posters = posters,
+                                        navigation = navigation,
+                                        focus = collectionFocus,
+                                        enabled = !blocked,
+                                        onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                        onOpen = ::openFromHome,
+                                        onBack = ::showSources,
+                                        onReady = {
+                                            homeReady = true
+                                            Analytics.event("ready", "what" to "home")
+                                        },
+                                    )
+                                }
+                            }
                         }
-                    } else if (library != null && child == null) {
-                        val collection = checkNotNull(if (library.type == "movie") movieLibrary else showLibrary)
-                        destinations.SaveableStateProvider("$serverId:${library.type}:${library.key}") {
-                            CollectionScreen(
-                                state = collection,
-                                posters = posters,
-                                navigation = navigation,
-                                focus = collectionFocus,
-                                libraries = state.libraries.filter { it.type == library.type },
-                                onLibrary = ::selectHeaderLibrary,
-                                playbackRunning = blocked,
-                                error = state.error,
-                                onBack = ::showSources,
-                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                onOpenShow = ::openShow,
-                            )
+                    }
+                    for (collection in listOfNotNull(movieLibrary, showLibrary)) key(collection) {
+                        val type = collection.library.type
+                        KeptScreen(shown == type) {
+                            destinations.SaveableStateProvider("$serverId:$type:${collection.library.key}") {
+                                CollectionScreen(
+                                    state = collection,
+                                    posters = posters,
+                                    navigation = navigation,
+                                    focus = collectionFocus,
+                                    libraries = state.libraries.filter { it.type == type },
+                                    onLibrary = ::selectHeaderLibrary,
+                                    playbackRunning = blocked,
+                                    error = state.error,
+                                    onBack = ::showSources,
+                                    onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                    onOpenShow = ::openShow,
+                                )
+                            }
                         }
-                    } else if (library != null && child != null) {
+                    }
+                    if (library != null && child != null) {
                         destinations.SaveableStateProvider("$serverId:show:${child.path}") {
                             ShowsScreen(
                                 state = child,
@@ -281,6 +295,7 @@ class MainActivity : ComponentActivity() {
         homeReady = false
         splash = true
         homeState = HomeState(selected, lifecycleScope)
+        prepareLibraries(selected)
         openHome()
     }
 
@@ -375,7 +390,18 @@ class MainActivity : ComponentActivity() {
         }
         homeReady = false
         homeState = HomeState(selected, lifecycleScope)
+        prepareLibraries(selected)
         openHome()
+    }
+
+    /** The saved libraries are built hidden behind the start screen, so even the first switch is instant. */
+    private fun prepareLibraries(selected: PlexConnection) {
+        navigationSelection.libraryFor(state.libraries, "movie")?.let {
+            movieLibrary = CollectionLibraryState(it, selected, lifecycleScope)
+        }
+        navigationSelection.libraryFor(state.libraries, "show")?.let {
+            showLibrary = CollectionLibraryState(it, selected, lifecycleScope)
+        }
     }
 
     private fun openHome() {
