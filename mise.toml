@@ -13,6 +13,7 @@ apk="app/build/outputs/apk/release/dooplex-movies.apk"
   --ks-pass pass:android --key-pass pass:android \
   --out "$apk" app/build/outputs/apk/release/app-release-unsigned.apk
 "$signer" verify "$apk"
+python3 tools/check-dex-access.py "$apk" "$sdk/build-tools/36.0.0/dexdump"
 printf 'Built %s\n' "$apk"
 '''
 
