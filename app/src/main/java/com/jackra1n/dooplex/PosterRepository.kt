@@ -209,6 +209,8 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         memoryBytes = 0L
     }
 
+    fun clearDisk() = disk.clear()
+
     // A hardware bitmap uploads here, off the render thread, instead of on its first drawn frame.
     private fun toGpu(decoded: Bitmap): Bitmap {
         if (!Analytics.flag("hwbitmaps")) {
@@ -383,6 +385,10 @@ private class PosterDiskCache(private val root: File) {
 
     fun remove(name: String) = synchronized(lock) {
         if (open()) forget(name)
+    }
+
+    fun clear() = synchronized(lock) {
+        if (open()) entries.keys.toList().forEach(::forget)
     }
 
     fun write(name: String, image: ImageBytes, context: CoroutineContext) {

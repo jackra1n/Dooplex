@@ -122,7 +122,9 @@ internal class CollectionFocusState {
     }
 
     fun completeContent(type: String) {
-        if (contentType == type) contentType = null
+        if (contentType != type) return
+        contentType = null
+        Analytics.event("ready", "what" to type)
     }
 
     fun enterHeader(route: String) {

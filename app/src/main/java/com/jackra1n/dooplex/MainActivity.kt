@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
     private var homeOrigin = false
     private var splash by mutableStateOf(true)
     private var homeReady by mutableStateOf(false)
+    private var homeEpoch by mutableIntStateOf(0)
     private val showHistory = mutableStateListOf<ShowBrowseState>()
     private var posterRepository: PosterRepository? = null
     private var serverId: String? = null
@@ -70,6 +72,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Analytics.start(this)
         Analytics.onFlagsChanged = { posterRepository?.clearMemory() }
+        Analytics.onCommand = ::runCommand
         // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
         window.setBackgroundDrawable(null)
         store = PlexAccountStore(this)
@@ -116,7 +119,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     if (home != null) {
-                        destinations.SaveableStateProvider("$serverId:home") {
+                        destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
                             HomeScreen(
                                 state = home,
                                 posters = posters,
@@ -126,7 +129,10 @@ class MainActivity : ComponentActivity() {
                                 onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
                                 onOpen = ::openFromHome,
                                 onBack = ::showSources,
-                                onReady = { homeReady = true },
+                                onReady = {
+                                    homeReady = true
+                                    Analytics.event("ready", "what" to "home")
+                                },
                             )
                         }
                     } else if (library != null && child == null) {
@@ -233,7 +239,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
             val key = KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
@@ -245,6 +250,40 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** Commands from tools/bench.py, so every benchmark run starts from the same state. */
+    private fun runCommand(command: String) {
+        if (PlaybackMonitor.state.value.running || state.busy || connection == null) return
+        when (command) {
+            "clear-memory", "clear-disk" -> {
+                posterRepository?.clearMemory()
+                if (command == "clear-disk") posterRepository?.clearDisk()
+                clearWashes()
+            }
+            "home" -> restartHome()
+            "open:movie", "open:show" -> reopenLibrary(command.removePrefix("open:"))
+            "focus" -> collectionFocus.enterContent(if (showingHome) "home" else activeLibrary?.type ?: return)
+        }
+    }
+
+    /** A fresh Home behind the start screen, as after a cold start. */
+    private fun restartHome() {
+        val selected = connection ?: return
+        closeCollections()
+        homeEpoch++
+        homeReady = false
+        splash = true
+        homeState = HomeState(selected, lifecycleScope)
+        openHome()
+    }
+
+    private fun reopenLibrary(type: String) {
+        val library = navigationSelection.libraryFor(state.libraries, type) ?: return
+        if (type == "movie") closeMovies() else closeShows()
+        collectionFocus.enterContent(type)
+        openLibrary(library)
+    }
+
+    /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
     private fun linkAccount() {
         runAction {
             state = PlexBrowserState(busy = true)

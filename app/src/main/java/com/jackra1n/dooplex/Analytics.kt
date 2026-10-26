@@ -42,6 +42,7 @@ internal object Analytics {
     private val flags = mutableStateMapOf<String, String>()
     private var flagText = ""
     var onFlagsChanged: (() -> Unit)? = null
+    var onCommand: ((String) -> Unit)? = null
 
     /** A development switch set from the PC (analytics/flags), so experiments need no reinstall. */
     fun flag(name: String, default: Boolean = true): Boolean =
@@ -103,7 +104,8 @@ internal object Analytics {
         var flushes = 0
         handler.postDelayed(object : Runnable {
             override fun run() {
-                if (frames > 0) event("frames", "count" to frames, "slow" to slow, "flags" to flagText)
+                // Sent even when idle, so the receiver's flags and commands always reach the app.
+                event("frames", "count" to frames, "slow" to slow, "flags" to flagText)
                 frames = 0
                 slow = 0
                 if (++flushes % MEMORY_EVERY == 0) memory()
@@ -184,13 +186,20 @@ internal object Analytics {
         val body = lines.joinToString("\n").toByteArray()
         val reply = post(url, body.size.toLong()) { it.write(body) }
         if (reply == null) lines.takeLast(500).forEach { queue += it }
-        // The receiver answers "trace <seconds>" after `mise run trace`, and always "flags ..." for experiments.
+        // The receiver answers "trace <seconds>" after `mise run trace`, "do <command>" for tools/bench.py,
+        // and always "flags ..." for experiments.
         reply?.lineSequence()?.forEach { line ->
             when {
                 line.startsWith("trace ") -> line.removePrefix("trace ").trim().toIntOrNull()?.let { trace(it.coerceIn(1, 60)) }
                 line.startsWith("flags") -> applyFlags(line.removePrefix("flags").trim())
+                line.startsWith("do ") -> command(line.removePrefix("do ").trim())
             }
         }
+    }
+
+    private fun command(name: String) {
+        event("command", "name" to name)
+        main.post { onCommand?.invoke(name) }
     }
 
     private fun applyFlags(text: String) {

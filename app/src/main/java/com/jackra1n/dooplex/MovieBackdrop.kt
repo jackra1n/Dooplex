@@ -157,6 +157,8 @@ private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
 private const val WASH_CACHE = 24
 private val washCache = LinkedHashMap<Pair<MovieAtmosphere, IntSize>, ImageBitmap>(WASH_CACHE + 1, 0.75f, true)
 
+internal fun clearWashes() = synchronized(washCache) { washCache.clear() }
+
 private const val WASH_SCALE = 8f
 
 private fun DrawScope.drawWash(colors: MovieAtmosphere) {

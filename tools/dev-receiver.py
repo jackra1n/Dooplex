@@ -5,7 +5,8 @@ Start it with `mise run receiver`. Crash reports land in crashes/, one file each
 lines appended to analytics/YYYY-MM-DD.jsonl; this prints a short digest of the interesting ones.
 `mise run trace` leaves analytics/trace-request; the next analytics upload is answered with
 "trace <seconds>", and the app sends the recorded trace to traces/ for tools/trace-report.py.
-Every reply also carries "flags <analytics/flags>", the experiment switches tools/bench.py sets.
+Every reply also carries "flags <analytics/flags>", the experiment switches tools/bench.py sets, and
+"do <command>" for each line tools/bench.py left in analytics/commands.
 """
 import datetime
 import http.server
@@ -22,6 +23,7 @@ ANALYTICS = ROOT / "analytics"
 TRACES = ROOT / "traces"
 TRACE_REQUEST = ANALYTICS / "trace-request"
 FLAGS = ANALYTICS / "flags"
+COMMANDS = ANALYTICS / "commands"
 SLOW_MS = 50
 
 
@@ -40,6 +42,8 @@ def digest(event):
         return "stats " + ", ".join(f"{k} n={v['n']} mean={v['mean']} max={v['max']}" for k, v in values.items())
     if kind == "flags":
         return f"flags now: {event.get('values') or 'defaults'}"
+    if kind in ("command", "ready"):
+        return f"{kind} {event.get('name') or event.get('what')}"
     if kind in ("trace-start", "trace-done", "trace-failed"):
         return f"{kind} " + ", ".join(f"{k}={v}" for k, v in event.items() if k not in ("t", "event", "screen"))
     if kind == "memory":
@@ -62,6 +66,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.events(body)
         # Experiment switches ride on every reply; tools/bench.py writes analytics/flags.
         lines = ["flags " + (FLAGS.read_text().strip() if FLAGS.exists() else "")]
+        if COMMANDS.exists():
+            lines += ["do " + command for command in COMMANDS.read_text().split()]
+            COMMANDS.unlink()
         if TRACE_REQUEST.exists():
             seconds = TRACE_REQUEST.read_text().strip() or "10"
             TRACE_REQUEST.unlink()
