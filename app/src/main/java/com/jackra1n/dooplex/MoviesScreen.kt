@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,13 +64,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -149,7 +144,7 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
 fun MoviesScreen(
     state: MovieLibraryState,
     posters: PosterRepository,
-    accountName: String,
+    navigation: @Composable () -> Unit,
     playbackRunning: Boolean,
     error: String?,
     onBack: () -> Unit,
@@ -466,7 +461,7 @@ fun MoviesScreen(
                         }
                         MoviesHeader(
                             state = state,
-                            accountName = accountName,
+                            navigation = navigation,
                             error = error,
                             compact = compact,
                             enabled = controlsEnabled,
@@ -522,8 +517,8 @@ fun MoviesScreen(
                                 requesters[index] = requester
                                 onDispose { requesters.remove(index) }
                             }
-                            MoviePosterCard(
-                                movie = item,
+                            CollectionPosterCard(
+                                item = item,
                                 posters = posters,
                                 artworkWidth = artworkWidth,
                                 loadArtwork = !playbackRunning && !scrolling && index in artworkRange,
@@ -656,7 +651,7 @@ fun MoviesScreen(
 @Composable
 private fun MoviesHeader(
     state: MovieLibraryState,
-    accountName: String,
+    navigation: @Composable () -> Unit,
     error: String?,
     compact: Boolean,
     enabled: Boolean,
@@ -668,24 +663,14 @@ private fun MoviesHeader(
     modifier: Modifier,
 ) {
     Column(modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("DOOPLEX", color = CinemaColors.Accent, fontSize = 16.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-            Spacer(Modifier.weight(1f))
-            Text(accountName, color = CinemaColors.Muted, fontSize = 16.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 300.dp))
-        }
+        navigation()
         Row(
             Modifier.fillMaxWidth().padding(bottom = 18.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CinemaButton(onClick = onBack, modifier = Modifier.focusRequester(backFocus), enabled = enabled) {
-                ControlText("‹  Libraries")
+                ControlText("‹  Sources")
             }
             Column(Modifier.weight(1f)) {
                 Text("Movies", color = CinemaColors.Foreground, fontSize = if (compact) 28.sp else 34.sp,
@@ -898,92 +883,6 @@ private fun ErrorNote(message: String, modifier: Modifier = Modifier) {
     Text(message, color = CinemaColors.Error, fontSize = 16.sp,
         modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite },
         maxLines = 3, overflow = TextOverflow.Ellipsis)
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun MoviePosterCard(
-    movie: PlexBrowseItem?,
-    posters: PosterRepository,
-    artworkWidth: Int,
-    loadArtwork: Boolean,
-    enabled: Boolean,
-    modifier: Modifier,
-    onFocus: () -> Unit,
-    onClick: () -> Unit,
-    placeholderLabel: String,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(9.dp)
-    val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "poster focus")
-    val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "poster highlight")
-    Column(
-        modifier.onFocusChanged {
-            focused = it.isFocused
-            if (it.isFocused) onFocus()
-        }.clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = null,
-            enabled = enabled, role = Role.Button, onClick = onClick,
-        ).semantics {
-            contentDescription = if (movie == null) "$placeholderLabel, loading. Select to request this movie."
-                else listOfNotNull(movie.title, movie.subtitle.takeIf { it.isNotBlank() },
-                    if (movie.watched) "Watched" else if (movie.viewOffsetMs > 0) "Partially watched" else null).joinToString(", ")
-        }.graphicsLayer {
-            scaleX = scale.value
-            scaleY = scale.value
-        },
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
-            .background(CinemaColors.Panel)
-            .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
-            .drawWithCache {
-                val highlight = Brush.radialGradient(
-                    colors = listOf(CinemaColors.Foreground.copy(alpha = 0.08f), Color.Transparent),
-                    center = Offset(size.width * 0.5f, 0f),
-                    radius = size.height.coerceAtLeast(1f),
-                )
-                val shine = Brush.linearGradient(
-                    0f to CinemaColors.Foreground.copy(alpha = 0.72f),
-                    0.22f to CinemaColors.Foreground.copy(alpha = 0.28f),
-                    0.58f to CinemaColors.Foreground.copy(alpha = 0.07f),
-                    1f to CinemaColors.Foreground.copy(alpha = 0.20f),
-                    start = Offset.Zero, end = Offset(size.width, size.height),
-                )
-                val edge = Stroke(1.dp.toPx())
-                val halo = Stroke(3.dp.toPx())
-                val inset = edge.width / 2
-                val outlineSize = Size((size.width - edge.width).coerceAtLeast(0f), (size.height - edge.width).coerceAtLeast(0f))
-                val corner = CornerRadius((9.dp.toPx() - inset).coerceAtLeast(0f))
-                onDrawWithContent {
-                    drawContent()
-                    drawRect(highlight, alpha = light.value)
-                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value * 0.14f, style = halo)
-                    drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value, style = edge)
-                }
-            }) {
-            PosterArtwork(movie?.thumbPath, posters, artworkWidth, loadArtwork,
-                Modifier.fillMaxSize(), movie?.title ?: placeholderLabel, metadataLoading = movie == null)
-            if (movie?.watched == true) {
-                Text("WATCHED", color = CinemaColors.Foreground, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)
-                        .clip(RoundedCornerShape(5.dp)).background(CinemaColors.Canvas.copy(alpha = 0.88f))
-                        .padding(horizontal = 7.dp, vertical = 5.dp))
-            }
-            if (movie != null && movie.viewOffsetMs > 0 && movie.durationMs > 0 && !movie.watched) {
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp).background(CinemaColors.Canvas.copy(alpha = 0.8f))) {
-                    Box(Modifier.fillMaxWidth((movie.viewOffsetMs.toDouble() / movie.durationMs).toFloat().coerceIn(0f, 1f))
-                        .fillMaxHeight().background(CinemaColors.Accent))
-                }
-            }
-        }
-        Text(movie?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.85f),
-            fontSize = 16.sp, fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(movie?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)

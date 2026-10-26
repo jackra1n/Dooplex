@@ -49,9 +49,7 @@ fun PlexBrowserScreen(
     onLink: () -> Unit,
     onServer: (PlexServer) -> Unit,
     onLibrary: (PlexLibrary) -> Unit,
-    onItem: (PlexBrowseItem) -> Unit,
-    onNextPage: () -> Unit,
-    onPreviousPage: () -> Unit,
+    onServers: () -> Unit,
     onBack: () -> Unit,
     onDisconnect: () -> Unit,
     onRetry: () -> Unit,
@@ -62,10 +60,10 @@ fun PlexBrowserScreen(
         BrowserStage.SIGN_IN -> "link"
         BrowserStage.SERVERS -> state.servers.firstOrNull()?.id ?: "empty"
         BrowserStage.LIBRARIES -> state.libraries.firstOrNull()?.key ?: "empty"
-        BrowserStage.TITLES -> state.page?.items?.firstOrNull()?.ratingKey ?: "empty"
+        BrowserStage.TITLES -> "empty"
     }
-    val destination = remember(state.stage, state.heading, state.page?.start, firstItemKey) {
-        listOf(state.stage.name, state.heading, state.page?.start, firstItemKey)
+    val destination = remember(state.stage, state.heading, firstItemKey) {
+        listOf(state.stage.name, state.heading, firstItemKey)
     }
     var focusedDestination by remember { mutableStateOf<List<Any?>?>(null) }
 
@@ -107,6 +105,11 @@ fun PlexBrowserScreen(
                 )
             } else {
                 Spacer(Modifier.weight(1f))
+            }
+            if (state.stage == BrowserStage.LIBRARIES) {
+                CinemaButton(onClick = onServers, enabled = !state.busy && !playback.running) {
+                    Text("Servers", fontSize = 18.sp)
+                }
             }
             if (state.canGoBack) {
                 CinemaButton(onClick = onBack, enabled = !playback.running) {
@@ -191,16 +194,7 @@ fun PlexBrowserScreen(
                                 onClick = { onLibrary(library) },
                             )
                         }
-                        BrowserStage.TITLES -> itemsIndexed(state.page?.items.orEmpty(), key = { _, item -> "title:${item.ratingKey}" }) { index, item ->
-                            BrowserChoice(
-                                title = item.title,
-                                subtitle = item.subtitle,
-                                action = if (item.childrenPath != null) "Open" else "Play",
-                                enabled = !state.busy && !playback.running,
-                                modifier = if (index == 0) Modifier.focusRequester(firstAction) else Modifier,
-                                onClick = { onItem(item) },
-                            )
-                        }
+                        BrowserStage.TITLES -> Unit
                         BrowserStage.SIGN_IN -> Unit
                     }
                     if (firstItemKey == "empty" && !state.busy) {
@@ -211,7 +205,7 @@ fun PlexBrowserScreen(
                                         state.error != null -> "Plex could not load this view. Try again or go back."
                                         state.stage == BrowserStage.SERVERS -> "No Plex servers found. Check that your server is online and shared with this account."
                                         state.stage == BrowserStage.LIBRARIES -> "No movie or TV libraries found on this server."
-                                        else -> "No titles found in this view."
+                                        else -> "Choose a source to continue."
                                     },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 20.sp,
@@ -222,27 +216,6 @@ fun PlexBrowserScreen(
                                     modifier = Modifier.focusRequester(firstAction),
                                 ) { Text(if (state.error != null) "Retry" else "Refresh", fontSize = 18.sp) }
                             }
-                        }
-                    }
-                }
-                if (state.stage == BrowserStage.TITLES && state.page != null) {
-                    val page = state.page
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CinemaButton(onClick = onPreviousPage, enabled = !state.busy && !playback.running && page.start > 0) {
-                            Text("Previous", fontSize = 18.sp)
-                        }
-                        Text(
-                            if (page.items.isEmpty()) "0 titles" else "${page.start + 1}–${page.start + page.items.size} of ${page.total}",
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 18.sp,
-                        )
-                        CinemaButton(onClick = onNextPage, enabled = !state.busy && !playback.running && page.hasNext) {
-                            Text("Next", fontSize = 18.sp)
                         }
                     }
                 }

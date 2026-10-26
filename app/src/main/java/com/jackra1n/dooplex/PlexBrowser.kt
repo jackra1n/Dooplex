@@ -63,7 +63,6 @@ data class PlexBrowserState(
     val pin: PlexPin? = null,
     val servers: List<PlexServer> = emptyList(),
     val libraries: List<PlexLibrary> = emptyList(),
-    val page: PlexBrowsePage? = null,
     val busy: Boolean = false,
     val error: String? = null,
     val canGoBack: Boolean = false,
