@@ -10,12 +10,14 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class DooplexApplication : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        CrashReporter.install(this)
+    // Content providers start before onCreate, so the reporter goes in first to see their crashes too.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        CrashReporter.install(base)
     }
 }
 
@@ -23,13 +25,12 @@ class DooplexApplication : Application() {
 internal object CrashReporter {
     private const val TIMEOUT_MS = 3_000
     private const val MAX_TRACE_BYTES = 256 * 1024
-    private val abnormalExits = setOf(
-        ApplicationExitInfo.REASON_CRASH_NATIVE,
-        ApplicationExitInfo.REASON_ANR,
-        ApplicationExitInfo.REASON_LOW_MEMORY,
-        ApplicationExitInfo.REASON_SIGNALED,
-        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE,
-        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
+    private const val STARTUP_WAIT_MS = 2_500L
+    private const val CRASH_WAIT_MS = 5_000L
+    private val normalExits = setOf(
+        ApplicationExitInfo.REASON_EXIT_SELF,
+        ApplicationExitInfo.REASON_USER_REQUESTED,
+        ApplicationExitInfo.REASON_USER_STOPPED,
     )
 
     fun install(context: Context) {
@@ -39,18 +40,25 @@ internal object CrashReporter {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { crashed, error ->
             try {
-                val report = report(context, "Uncaught exception on thread ${crashed.name}", error.stackTraceToString())
-                pending.writeText(report)
-                // The main thread may not use the network, so a helper thread sends while this one waits.
-                thread { if (send(url, report)) pending.delete() }.join(TIMEOUT_MS.toLong())
+                val trace = "Uncaught exception on thread ${crashed.name}\n\n${error.stackTraceToString()}"
+                pending.writeText(trace)
+                // The main thread may not use the network, so a helper thread collects and sends while this one waits.
+                thread {
+                    val report = report(context, trace)
+                    pending.writeText(report)
+                    if (send(url, report)) pending.delete()
+                }.join(CRASH_WAIT_MS)
             } catch (_: Throwable) {
             }
             previous?.uncaughtException(crashed, error)
         }
+        // Waiting here lets an app that crashes right after launch still deliver the previous crash.
         thread(name = "crash-reporter") {
+            val installed = Instant.ofEpochMilli(context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime)
+            send(url, "Launched build installed at $installed on ${Build.MODEL}")
             if (pending.exists() && send(url, pending.readText())) pending.delete()
             reportPreviousExits(context, url)
-        }
+        }.join(STARTUP_WAIT_MS)
     }
 
     private fun reportPreviousExits(context: Context, url: String) {
@@ -60,21 +68,22 @@ internal object CrashReporter {
             .getHistoricalProcessExitReasons(null, 0, 5)
             .filter { it.timestamp > reported }
         for (exit in exits.sortedBy { it.timestamp }) {
-            if (exit.reason !in abnormalExits) continue
+            if (exit.reason in normalExits) continue
             val details = buildString {
+                appendLine("Previous run ended abnormally")
                 appendLine("Reason: ${exit.reason}, status ${exit.status}, importance ${exit.importance}")
                 appendLine("Description: ${exit.description}")
                 appendLine("Memory: pss ${exit.pss} KiB, rss ${exit.rss} KiB")
                 appendLine("Exited: ${Instant.ofEpochMilli(exit.timestamp)}")
                 exit.traceInputStream?.use { appendLine().appendLine(readLimited(it)) }
             }
-            if (!send(url, report(context, "Previous run ended abnormally", details))) return
+            if (!send(url, report(context, details))) return
         }
         exits.maxOfOrNull { it.timestamp }?.let { preferences.edit().putLong("last-exit", it).apply() }
     }
 
-    private fun report(context: Context, title: String, body: String): String = buildString {
-        appendLine(title)
+    private fun report(context: Context, body: String): String = buildString {
+        appendLine(body.lineSequence().first())
         appendLine("App: ${context.packageName} ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.BUILD_TYPE}")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
         appendLine("Time: ${Instant.now()}")
@@ -82,13 +91,17 @@ internal object CrashReporter {
         appendLine(body.trimEnd())
         appendLine()
         appendLine("Recent log:")
-        append(recentLog())
+        append(recentLog(context))
     }
 
     // Apps may read their own log lines, including the ones left by the previous process.
-    private fun recentLog(): String = try {
-        val process = ProcessBuilder("logcat", "-d", "-t", "400", "-v", "threadtime").redirectErrorStream(true).start()
-        process.inputStream.use { readLimited(it) }.also { process.destroy() }
+    // Writing to a file with a deadline keeps a stuck logcat from blocking the report.
+    private fun recentLog(context: Context): String = try {
+        val file = File(context.cacheDir, "recent.log")
+        val process = ProcessBuilder("logcat", "-d", "-t", "400", "-v", "threadtime")
+            .redirectErrorStream(true).redirectOutput(file).start()
+        if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroy()
+        file.inputStream().use { readLimited(it) }
     } catch (_: Exception) {
         "unavailable"
     }
