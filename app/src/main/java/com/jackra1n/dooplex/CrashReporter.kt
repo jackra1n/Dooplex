@@ -21,7 +21,7 @@ class DooplexApplication : Application() {
     }
 }
 
-/** Off unless the build sets DOOPLEX_CRASH_URL; `mise run upload` points it at `mise run crashes` on the dev PC. */
+/** Off unless the build sets DOOPLEX_CRASH_URL; `mise run upload` points it at `mise run receiver` on the dev PC. */
 internal object CrashReporter {
     private const val TIMEOUT_MS = 3_000
     private const val MAX_TRACE_BYTES = 256 * 1024
