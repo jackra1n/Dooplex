@@ -20,6 +20,10 @@ internal object FrameReporter {
         if (url.isEmpty()) return
         val handler = Handler(HandlerThread("frame-reporter").apply { start() }.looper)
         val budget = 1_000_000_000L / (activity.display?.refreshRate ?: 60f).toLong()
+        val render = activity.resources.displayMetrics
+        val mode = activity.display?.mode
+        val screen = "Render ${render.widthPixels}x${render.heightPixels} at density ${render.density}, " +
+            "display ${mode?.physicalWidth}x${mode?.physicalHeight} at ${mode?.refreshRate} Hz"
         val slow = ArrayList<String>()
         var frames = 0
         var janky = 0
@@ -40,7 +44,7 @@ internal object FrameReporter {
         handler.postDelayed(object : Runnable {
             override fun run() {
                 if (janky > 0) {
-                    CrashReporter.send(url, "Slow frames: $janky of $frames over ${FLUSH_MS / 1000} s\n" + slow.joinToString("\n"))
+                    CrashReporter.send(url, "Slow frames: $janky of $frames over ${FLUSH_MS / 1000} s\n$screen\n" + slow.joinToString("\n"))
                     slow.clear()
                 }
                 frames = 0
