@@ -1,6 +1,21 @@
 package com.jackra1n.dooplex
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import com.jackra1n.dooplex.ui.theme.CinemaColors
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,8 +32,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,22 +91,20 @@ fun PlexBrowserScreen(
 
     BackHandler(enabled = state.canGoBack && !playback.running, onBack = onBack)
 
+    AtmosphericWash(MovieAtmosphere.Welcome, Modifier.fillMaxSize())
     Column(
         modifier = Modifier.fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 48.dp, vertical = 28.dp),
+            .padding(horizontal = 56.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "Dooplex",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Text("DOOPLEX", color = CinemaColors.Accent, fontSize = 16.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
             if (state.accountName.isNotBlank()) {
                 Text(
                     state.accountName,
@@ -122,12 +133,13 @@ fun PlexBrowserScreen(
                 }
             }
         }
-        Text(
+        if (state.stage != BrowserStage.SIGN_IN) Text(
             state.heading,
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 12.dp),
         )
         if (state.stage == BrowserStage.SIGN_IN) {
             SignInPanel(
@@ -169,7 +181,7 @@ fun PlexBrowserScreen(
                 }
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    modifier = Modifier.weight(1f).widthIn(max = 820.dp).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -227,6 +239,7 @@ fun PlexBrowserScreen(
     }
 }
 
+/** The QR is plex.tv's own; the typed plex.tv/link code stays as a small fallback beside it. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun SignInPanel(
@@ -235,55 +248,67 @@ private fun SignInPanel(
     onLink: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    val pin = state.pin
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(64.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "On your phone or laptop, open plex.tv/link and sign in to Plex.",
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 22.sp,
-        )
-        if (state.pin != null) {
-            Text("Enter this TV code", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 18.sp)
+        Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Sign in with your phone", color = CinemaColors.Foreground, fontSize = 34.sp,
+                fontWeight = FontWeight.SemiBold)
+            Text("Scan the code with your phone’s camera and approve Dooplex in Plex. This screen continues on its own.",
+                color = CinemaColors.Muted, fontSize = 18.sp, lineHeight = 27.sp)
             Text(
-                state.pin.code,
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 56.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 6.sp,
+                when {
+                    state.error != null -> state.error
+                    pin == null -> "Getting a sign-in code…"
+                    else -> "Waiting for you to sign in…"
+                },
+                modifier = Modifier.padding(top = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                color = if (state.error != null) CinemaColors.Error else CinemaColors.Foreground.copy(alpha = 0.86f),
+                fontSize = 16.sp,
             )
-            Text(
-                if (state.error != null) "Request a new code below to try linking again."
-                else "Waiting for approval… Keep this screen open while you link your account.",
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 18.sp,
+            if (pin != null && state.pinQr != null) Text(
+                buildAnnotatedString {
+                    append("No camera? Open ")
+                    withStyle(SpanStyle(color = CinemaColors.Foreground, fontWeight = FontWeight.SemiBold)) { append("plex.tv/link") }
+                    append(" and enter ")
+                    withStyle(SpanStyle(color = CinemaColors.Foreground, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp)) {
+                        append(pin.code)
+                    }
+                },
+                color = CinemaColors.Muted, fontSize = 15.sp,
             )
-        } else {
-            Text(
-                if (state.busy) "Getting your link code…" else "Choose Get link code, then enter the code on that page. No remote typing needed.",
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 20.sp,
-            )
+            CinemaButton(
+                onClick = onLink,
+                enabled = !state.busy || pin != null,
+                modifier = Modifier.padding(top = 10.dp).focusRequester(firstAction),
+            ) {
+                Text(if (state.error != null) "Try again" else "New code", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
         }
-        if (state.error != null) {
-            Text(
-                state.error,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 18.sp,
-            )
-        }
-        CinemaButton(
-            onClick = onLink,
-            enabled = !state.busy || state.pin != null,
-            modifier = Modifier.focusRequester(firstAction),
+        Box(
+            Modifier.size(280.dp).clip(RoundedCornerShape(28.dp)).background(Color.White).padding(18.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(if (state.pin == null) "Get link code" else "Get new code", fontSize = 20.sp)
+            when {
+                // plex.tv draws white modules on transparency for dark screens; tinting them dark on
+                // this white card gives the classic QR every phone camera reads.
+                state.pinQr != null -> Image(
+                    bitmap = state.pinQr.asImageBitmap(),
+                    contentDescription = "QR code to sign in to Plex",
+                    colorFilter = ColorFilter.tint(CinemaColors.OnAccent),
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                pin != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("plex.tv/link", color = CinemaColors.OnAccent, fontSize = 18.sp)
+                    Text(pin.code, color = CinemaColors.OnAccent, fontSize = 46.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+                }
+                else -> Text("…", color = CinemaColors.OnAccent, fontSize = 32.sp)
+            }
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 
