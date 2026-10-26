@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -96,7 +97,8 @@ internal fun HomeScreen(
     onOpen: (PlexBrowseItem) -> Unit,
     onBack: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
+    // Rows are built during idle frames before Down reveals them, and kept a little after they leave.
+    val listState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 1f, behindFraction = 0.5f) })
     val scope = rememberCoroutineScope()
     var focusedOnce by rememberSaveable { mutableStateOf(false) }
     val heroPlay = remember { FocusRequester() }
@@ -193,7 +195,8 @@ internal fun HomeScreen(
                     } else offset - restLine
             }
         }
-        val rowSpec = LocalBringIntoViewSpec.current
+        // Compose pivots TV focus to 30% of a row; a shelf only scrolls when its card would leave the screen.
+        val rowSpec = remember { object : BringIntoViewSpec {} }
 
         MovieBackdrop(
             movie = { if (heroFocused || focusedCard == null) shown else focusedCard },
@@ -234,6 +237,7 @@ internal fun HomeScreen(
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = edge, bottom = 12.dp))
                         CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
                             LazyRow(
+                                state = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f) }),
                                 contentPadding = PaddingValues(horizontal = edge),
                                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                                 modifier = Modifier.fillMaxWidth().focusRestorer(),
