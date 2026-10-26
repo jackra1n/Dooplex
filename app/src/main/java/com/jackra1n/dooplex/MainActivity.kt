@@ -30,6 +30,9 @@ class MainActivity : ComponentActivity() {
     private var showLibrary by mutableStateOf<CollectionLibraryState?>(null)
     private var selectedShowKey: String? = null
     private var activeLibrary by mutableStateOf<PlexLibrary?>(null)
+    private var homeState by mutableStateOf<HomeState?>(null)
+    private var showingHome by mutableStateOf(false)
+    private var homeOrigin = false
     private val showHistory = mutableStateListOf<ShowBrowseState>()
     private var posterRepository: PosterRepository? = null
     private var serverId: String? = null
@@ -68,24 +71,43 @@ class MainActivity : ComponentActivity() {
             DooplexTheme {
                 val library = activeLibrary
                 val posters = posterRepository
-                if (state.stage == BrowserStage.TITLES && library != null && posters != null) {
+                val home = homeState.takeIf { showingHome }
+                if (state.stage == BrowserStage.TITLES && posters != null && (home != null || library != null)) {
                     val blocked = playback.running || state.busy
-                    val child = showHistory.lastOrNull().takeIf { library.type == "show" }
-                    val route = child?.let { "show:${it.path}" } ?: "library:${library.key}"
+                    val child = showHistory.lastOrNull().takeIf { home == null && library?.type == "show" }
+                    val route = when {
+                        home != null -> "home"
+                        child != null -> "show:${child.path}"
+                        else -> "library:${library?.key}"
+                    }
                     val navigation: @Composable () -> Unit = {
                         CollectionNavigationBar(
                             accountName = state.accountName,
-                            activeType = library.type,
+                            activeType = if (home != null) "home" else library?.type.orEmpty(),
                             movieTitle = collectionLabel("movie"),
                             showTitle = collectionLabel("show"),
                             focus = collectionFocus,
-                            enabled = !blocked && movieLibrary?.selectedMovie == null,
+                            enabled = !blocked && movieLibrary?.selectedMovie == null && homeState?.selectedMovie == null,
+                            onHome = ::showHome,
                             onMovies = { selectCollection("movie") },
                             onShows = { selectCollection("show") },
                             onDown = { collectionFocus.enterHeader(route) },
                         )
                     }
-                    if (child == null) {
+                    if (home != null) {
+                        destinations.SaveableStateProvider("$serverId:home") {
+                            HomeScreen(
+                                state = home,
+                                posters = posters,
+                                navigation = navigation,
+                                focus = collectionFocus,
+                                enabled = !blocked,
+                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                onOpen = ::openFromHome,
+                                onBack = ::showSources,
+                            )
+                        }
+                    } else if (library != null && child == null) {
                         val collection = checkNotNull(if (library.type == "movie") movieLibrary else showLibrary)
                         destinations.SaveableStateProvider("$serverId:${library.type}:${library.key}") {
                             CollectionScreen(
@@ -102,7 +124,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenShow = ::openShow,
                             )
                         }
-                    } else {
+                    } else if (library != null && child != null) {
                         destinations.SaveableStateProvider("$serverId:show:${child.path}") {
                             ShowsScreen(
                                 state = child,
@@ -157,6 +179,7 @@ class MainActivity : ComponentActivity() {
                     pendingShow?.takeIf { it in showHistory }?.refresh()
                     if (pendingShow != null) selectedShowKey?.let { showLibrary?.refreshItem(it) }
                     pendingShow = null
+                    homeState?.refresh()
                 }
             }
         }
@@ -253,13 +276,41 @@ class MainActivity : ComponentActivity() {
             navigationStore.rememberServer(server.id)
             navigationSelection = navigationStore.load()
         }
-        val preferred = navigationSelection.preferredLibrary(libraries)
-        if (preferred != null) {
-            saveLibrarySelection(preferred)
-            openLibrary(preferred)
-        } else if (navigationSelection.movieLibraryKey != null || navigationSelection.showLibraryKey != null) {
-            state = state.copy(error = "Choose an available library to continue.")
+        homeState = HomeState(selected, lifecycleScope)
+        openHome()
+    }
+
+    private fun openHome() {
+        homeOrigin = false
+        showingHome = true
+        state = state.copy(stage = BrowserStage.TITLES, heading = "Home", error = null, canGoBack = true)
+    }
+
+    private fun showHome() {
+        if (PlaybackMonitor.state.value.running || state.busy || homeState == null) return
+        openHome()
+    }
+
+    /** Shows and seasons open in their own TV library; Back from that stack returns to Home. */
+    private fun openFromHome(item: PlexBrowseItem) {
+        if (PlaybackMonitor.state.value.running || state.busy) return
+        val selected = connection ?: return
+        val path = item.childrenPath ?: return
+        val library = state.libraries.firstOrNull { it.type == "show" && it.key == item.libraryKey }
+            ?: navigationSelection.libraryFor(state.libraries, "show") ?: return
+        if (showLibrary?.library?.key != library.key) {
+            closeShows()
+            showLibrary = CollectionLibraryState(library, selected, lifecycleScope)
         }
+        showHistory.forEach { it.close() }
+        showHistory.clear()
+        if (item.type == "show") selectedShowKey = item.ratingKey
+        val level = if (item.type == "season") ShowBrowseLevel.EPISODES else ShowBrowseLevel.SEASONS
+        showHistory += ShowBrowseState(path, item.title, level, selected, lifecycleScope)
+        activeLibrary = library
+        showingHome = false
+        homeOrigin = true
+        state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
     }
 
     private suspend fun saveLibrarySelection(library: PlexLibrary) {
@@ -293,6 +344,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         activeLibrary = library
+        showingHome = false
+        homeOrigin = false
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
     }
 
@@ -312,7 +365,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun selectCollection(type: String) {
-        if (PlaybackMonitor.state.value.running || state.busy || activeLibrary?.type == type) return
+        if (PlaybackMonitor.state.value.running || state.busy || !showingHome && activeLibrary?.type == type) return
         val library = navigationSelection.libraryFor(state.libraries, type)
         if (library != null) selectLibrary(library) else choosingLibraryType = type
     }
@@ -350,6 +403,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resumeCollection() {
+        if (showingHome && homeState != null) return openHome()
         val library = activeLibrary ?: return
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, busy = false, error = null, canGoBack = true)
     }
@@ -359,19 +413,20 @@ class MainActivity : ComponentActivity() {
         when (state.stage) {
             BrowserStage.SIGN_IN -> finish()
             BrowserStage.SERVERS -> {
-                if (activeLibrary != null) { cancelAction(); resumeCollection() }
+                if (activeLibrary != null || homeState != null) { cancelAction(); resumeCollection() }
                 else if (connection != null) { cancelAction(); state = state.copy(busy = false); showSources() }
             }
             BrowserStage.LIBRARIES -> {
                 cancelAction()
-                if (activeLibrary != null) resumeCollection()
+                if (activeLibrary != null || homeState != null) resumeCollection()
                 else { state = state.copy(busy = false); showServerPicker() }
             }
             BrowserStage.TITLES -> {
-                if (activeLibrary?.type == "show" && showHistory.isNotEmpty()) {
+                if (!showingHome && activeLibrary?.type == "show" && showHistory.isNotEmpty()) {
                     showHistory.removeAt(showHistory.lastIndex).close()
                     val parent = showHistory.lastOrNull()
                     if (parent != null) parent.refresh()
+                    else if (homeOrigin && homeState != null) openHome()
                     else selectedShowKey?.let { showLibrary?.refreshItem(it) }
                 } else showSources()
             }
@@ -450,6 +505,10 @@ class MainActivity : ComponentActivity() {
         closeMovies()
         closeShows()
         activeLibrary = null
+        homeState?.close()
+        homeState = null
+        showingHome = false
+        homeOrigin = false
     }
 
     override fun onDestroy() {

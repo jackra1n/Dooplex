@@ -177,10 +177,7 @@ internal fun ShowsScreen(
         grid.scrollToItem(0)
         snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
         withFrameNanos { }
-        when (focus.navigationType) {
-            "movie" -> focus.movieTab.requestFocus()
-            "show" -> focus.showTab.requestFocus()
-        }
+        focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
     LaunchedEffect(route, focus.headerEpoch, enabled) {
         if (focus.headerRoute != route || !enabled) return@LaunchedEffect

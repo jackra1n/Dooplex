@@ -28,20 +28,6 @@ internal data class PlexNavigationSelection(
         }
     }
 
-    /**
-     * A first-time choice may fall back to the other supported type only if the active type has
-     * neither a saved key nor any libraries, and the other type has exactly one non-stale choice.
-     */
-    fun preferredLibrary(libraries: List<PlexLibrary>): PlexLibrary? {
-        if (activeType != "movie" && activeType != "show") return null
-        libraryFor(libraries, activeType)?.let { return it }
-        if (libraryKey(activeType) != null || libraries.any { it.type == activeType }) return null
-        val otherType = if (activeType == "movie") "show" else "movie"
-        val otherLibrary = libraries.singleOrNull { it.type == otherType } ?: return null
-        val otherKey = libraryKey(otherType)
-        return otherLibrary.takeIf { otherKey == null || it.key == otherKey }
-    }
-
     private fun libraryKey(type: String): String? = when (type) {
         "movie" -> movieLibraryKey
         "show" -> showLibraryKey

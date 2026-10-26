@@ -79,6 +79,7 @@ import kotlinx.coroutines.launch
  */
 @Stable
 internal class CollectionFocusState {
+    val homeTab = FocusRequester()
     val movieTab = FocusRequester()
     val showTab = FocusRequester()
     var navigationType by mutableStateOf<String?>(null)
@@ -89,6 +90,12 @@ internal class CollectionFocusState {
         private set
     var headerEpoch by mutableIntStateOf(0)
         private set
+
+    fun tab(type: String): FocusRequester = when (type) {
+        "home" -> homeTab
+        "movie" -> movieTab
+        else -> showTab
+    }
 
     fun focusTab(type: String) {
         if (headerRoute != null) return
@@ -132,22 +139,21 @@ internal fun CollectionNavigationBar(
     showTitle: String?,
     focus: CollectionFocusState,
     enabled: Boolean,
+    onHome: () -> Unit,
     onMovies: () -> Unit,
     onShows: () -> Unit,
     onDown: () -> Unit,
 ) {
     val tabs = remember(movieTitle, showTitle) {
         buildList {
+            add("home" to "Home")
             if (movieTitle != null) add("movie" to movieTitle)
             if (showTitle != null) add("show" to showTitle)
         }
     }
     var focusedType by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(activeType, focus.navigationEpoch) {
-        when (focus.navigationType) {
-            "movie" -> focus.movieTab.requestFocus()
-            "show" -> focus.showTab.requestFocus()
-        }
+        focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
     val density = LocalDensity.current
     val unit = LocalConfiguration.current.screenWidthDp.dp / 1920f
@@ -217,7 +223,7 @@ internal fun CollectionNavigationBar(
                 Box(
                     Modifier.width(with(density) { tabWidths[index].toDp() })
                         .height(with(density) { pillHeight.toDp() })
-                        .focusRequester(if (type == "movie") focus.movieTab else focus.showTab)
+                        .focusRequester(focus.tab(type))
                         .onPreviewKeyEvent { event ->
                             when (event.key) {
                                 Key.DirectionDown -> {
@@ -250,7 +256,11 @@ internal fun CollectionNavigationBar(
                             onClick = {
                                 if (enabled) {
                                     focus.confirmTab(type)
-                                    if (type == "movie") onMovies() else onShows()
+                                    when (type) {
+                                        "home" -> onHome()
+                                        "movie" -> onMovies()
+                                        else -> onShows()
+                                    }
                                 }
                             },
                         ).padding(horizontal = unit * 18),
