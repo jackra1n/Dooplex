@@ -146,6 +146,7 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
  * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
  * Vertical DPAD targets retain their column and take focus when visible, without waiting for scroll completion.
  * Directional reveals own scrolling until completion so early focus cannot replace their animation.
+ * Header focus reveals all chrome and top spacing, not just the active control's minimum bounds.
  * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -179,7 +180,7 @@ fun MoviesScreen(
         }
     }
     var sortOpen by remember { mutableStateOf(false) }
-    var restoreToSort by remember { mutableStateOf(false) }
+    var restoreToHeader by remember { mutableStateOf(false) }
     var restoreEpoch by remember { mutableIntStateOf(0) }
     var needsFocus by remember { mutableStateOf(true) }
     var wasPlaying by remember { mutableStateOf(playbackRunning) }
@@ -201,13 +202,20 @@ fun MoviesScreen(
     val modalOpen = sortOpen || selected != null
 
     fun restoreGrid() {
-        restoreToSort = false
+        restoreToHeader = false
         directionalFocus = false
         awaitingJump = false
         returnAfterJump = false
         railRestorePending = false
         pendingFocusIndex = focusedIndex
         needsFocus = true
+        restoreEpoch++
+    }
+
+    fun revealHeader() {
+        if (restoreToHeader || needsFocus || !grid.canScrollBackward) return
+        restoreToHeader = true
+        directionalFocus = true
         restoreEpoch++
     }
 
@@ -220,7 +228,7 @@ fun MoviesScreen(
         pendingFocusIndex = index
         directionalFocus = true
         needsFocus = true
-        restoreToSort = false
+        restoreToHeader = false
         restoreEpoch++
     }
 
@@ -244,7 +252,7 @@ fun MoviesScreen(
     LaunchedEffect(state.jumpRequest?.id) {
         val jump = state.jumpRequest ?: return@LaunchedEffect
         focusedIndex = jump.index
-        restoreToSort = false
+        restoreToHeader = false
         grid.scrollToMovieLetter(jump.index + MOVIE_GRID_HEADER_ITEMS)
         awaitingJump = false
         pendingFocusIndex = null
@@ -268,9 +276,10 @@ fun MoviesScreen(
     // No focus requests are keyed to page fills, details refreshes, or playback position reports.
     LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading) {
         if (playbackRunning || modalOpen ||
-            (!needsFocus && (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
+            (!needsFocus && !restoreToHeader &&
+                (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
         val focusEpoch = restoreEpoch
-        if (restoreToSort) {
+        if (restoreToHeader) {
             coroutineScope {
                 if (directionalFocus) launch { grid.animateScrollToItem(0) } else grid.scrollToItem(0)
                 snapshotFlow {
@@ -320,6 +329,7 @@ fun MoviesScreen(
         if (restoreEpoch != focusEpoch) return@LaunchedEffect
         pendingFocusIndex = null
         needsFocus = false
+        restoreToHeader = false
         directionalFocus = false
     }
 
@@ -327,7 +337,7 @@ fun MoviesScreen(
         when {
             sortOpen -> {
                 sortOpen = false
-                restoreToSort = true
+                restoreToHeader = true
                 needsFocus = true
                 restoreEpoch++
             }
@@ -470,7 +480,20 @@ fun MoviesScreen(
                             onBack = onBack,
                             onSort = { restoreGrid(); sortOpen = true },
                             onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
-                            modifier = Modifier.onFocusChanged { if (it.hasFocus) gridHasFocus = false }.focusGroup(),
+                            modifier = Modifier.onFocusChanged {
+                                if (it.hasFocus) {
+                                    gridHasFocus = false
+                                    if (controlsEnabled) revealHeader()
+                                } else if (restoreToHeader && !needsFocus) {
+                                    restoreToHeader = false
+                                    directionalFocus = false
+                                    restoreEpoch++
+                                }
+                            }.onPreviewKeyEvent { event ->
+                                if (controlsEnabled && event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown)
+                                    revealHeader()
+                                false
+                            }.focusGroup(),
                         )
                     }
                     if (state.total == 0 && !state.loading) {
@@ -515,7 +538,10 @@ fun MoviesScreen(
                                     val logicalIndex = pendingFocusIndex ?: index
                                     val column = logicalIndex % columns
                                     val rowEnd = column == columns - 1 || logicalIndex == count - 1
-                                    if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
+                                    if (controlsEnabled && restoreToHeader && event.key == Key.DirectionUp) {
+                                        // Repeats can still reach the old poster before header focus attaches.
+                                        true
+                                    } else if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
                                         if (event.type == KeyEventType.KeyDown) enterAlphabet()
                                         true
                                     } else if (controlsEnabled && event.key == Key.DirectionDown) {
@@ -530,7 +556,7 @@ fun MoviesScreen(
                                         if (event.type == KeyEventType.KeyDown) {
                                             pendingFocusIndex = null
                                             directionalFocus = true
-                                            restoreToSort = true
+                                            restoreToHeader = true
                                             needsFocus = true
                                             restoreEpoch++
                                         }
@@ -601,14 +627,14 @@ fun MoviesScreen(
             current = state.sort,
             onDismiss = {
                 sortOpen = false
-                restoreToSort = true
+                restoreToHeader = true
                 needsFocus = true
                 restoreEpoch++
             },
             onChoose = {
                 state.setSort(it)
                 sortOpen = false
-                restoreToSort = true
+                restoreToHeader = true
                 needsFocus = true
                 restoreEpoch++
             },
