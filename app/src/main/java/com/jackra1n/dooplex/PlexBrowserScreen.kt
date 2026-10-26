@@ -1,6 +1,14 @@
 package com.jackra1n.dooplex
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -367,4 +375,28 @@ private fun PlaybackEvidence(playback: PlaybackProofStatus) {
 private fun playbackTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
+}
+
+/** Covers start-up until the first real screen is ready, so the app never shows a page filling in. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+internal fun StartScreen(modifier: Modifier) {
+    val sweep = rememberInfiniteTransition(label = "start").animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing)), label = "start sweep",
+    )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        CornerGround(CornerColors.Welcome, Modifier.fillMaxSize())
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text("DOOPLEX", color = CinemaColors.Accent, fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = 7.sp)
+            Box(
+                Modifier.size(width = 120.dp, height = 3.dp).clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .drawWithContent {
+                        val width = size.width * 0.35f
+                        drawRect(Color.White.copy(alpha = 0.7f), Offset((size.width + width) * sweep.value - width, 0f), Size(width, size.height))
+                    },
+            )
+        }
+    }
 }

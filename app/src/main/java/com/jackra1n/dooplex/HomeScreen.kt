@@ -74,8 +74,10 @@ import com.jackra1n.dooplex.ui.theme.CinemaColors
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val HERO_SECONDS = 8L
 private val ShelfSpring = spring<Float>(dampingRatio = 1f, stiffness = 170f)
@@ -96,6 +98,7 @@ internal fun HomeScreen(
     onPlay: (PlexBrowseItem, Boolean) -> Unit,
     onOpen: (PlexBrowseItem) -> Unit,
     onBack: () -> Unit,
+    onReady: () -> Unit,
 ) {
     // Rows are built during idle frames before Down reveals them, and kept a little after they leave.
     val listState = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 1f, behindFraction = 0.5f) })
@@ -196,8 +199,37 @@ internal fun HomeScreen(
                     } else offset - restLine
             }
         }
-        // Compose pivots TV focus to 30% of a row; a shelf only scrolls when its card would leave the screen.
-        val rowSpec = remember { object : BringIntoViewSpec {} }
+        // Compose pivots TV focus to 30% of a row; a shelf only scrolls when its card would cross the
+        // page margins, so the first card returns exactly to its resting place.
+        val edgePx = with(density) { edge.toPx() }
+        val rowSpec = remember(edgePx) {
+            object : BringIntoViewSpec {
+                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
+                    offset < edgePx -> offset - edgePx
+                    offset + size > containerSize - edgePx -> offset + size - (containerSize - edgePx)
+                    else -> 0f
+                }
+            }
+        }
+        // Ready once the hero's picture and the first shelf's posters are in memory, so the start
+        // screen can lift onto a finished page instead of one that is still filling in.
+        LaunchedEffect(state) {
+            snapshotFlow { !state.loading && (shown != null || state.heroes.isEmpty() || state.error != null) }.first { it }
+            withTimeoutOrNull(1_500) {
+                coroutineScope {
+                    state.rows.firstOrNull()?.items?.take(columns + 1)?.mapNotNull { it.thumbPath }?.forEach { path ->
+                        launch {
+                            try {
+                                posters.load(path, artworkWidth, artworkWidth * 3 / 2)
+                            } catch (_: IOException) {
+                            }
+                        }
+                    }
+                }
+            }
+            withFrameNanos { }
+            onReady()
+        }
 
         MovieBackdrop(
             movie = { if (heroFocused || focusedCard == null) shown else focusedCard },
@@ -290,7 +322,21 @@ internal fun HomeScreen(
 private fun HeroArt(item: PlexBrowseItem?, posters: PosterRepository, modifier: Modifier) {
     Crossfade(targetState = item, animationSpec = tween(500), modifier = modifier, label = "hero art") { hero ->
         val painter = rememberMovieArtworkPainter(hero?.artPath, posters, width = 1280, height = 720, active = true)
-        if (painter != null) Box(
+        if (painter != null && !Analytics.flag("heromask")) Box(
+            Modifier.fillMaxSize().drawWithCache {
+                val side = Brush.horizontalGradient(
+                    0f to Color.Black.copy(alpha = 0.72f), 0.42f to Color.Black.copy(alpha = 0.4f), 0.75f to Color.Transparent,
+                )
+                val fade = Brush.verticalGradient(0.5f to Color.Transparent, 0.98f to CinemaColors.Canvas)
+                onDrawWithContent {
+                    drawContent()
+                    drawRect(side)
+                    drawRect(fade)
+                }
+            },
+        ) {
+            Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else if (painter != null) Box(
             Modifier.fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithCache {

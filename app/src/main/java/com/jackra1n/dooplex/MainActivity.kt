@@ -5,6 +5,11 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +40,8 @@ class MainActivity : ComponentActivity() {
     private var homeState by mutableStateOf<HomeState?>(null)
     private var showingHome by mutableStateOf(false)
     private var homeOrigin = false
+    private var splash by mutableStateOf(true)
+    private var homeReady by mutableStateOf(false)
     private val showHistory = mutableStateListOf<ShowBrowseState>()
     private var posterRepository: PosterRepository? = null
     private var serverId: String? = null
@@ -62,6 +69,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Analytics.start(this)
+        Analytics.onFlagsChanged = { posterRepository?.clearMemory() }
         // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
         window.setBackgroundDrawable(null)
         store = PlexAccountStore(this)
@@ -118,6 +126,7 @@ class MainActivity : ComponentActivity() {
                                 onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
                                 onOpen = ::openFromHome,
                                 onBack = ::showSources,
+                                onReady = { homeReady = true },
                             )
                         }
                     } else if (library != null && child == null) {
@@ -186,6 +195,18 @@ class MainActivity : ComponentActivity() {
                         onRetry = ::retry,
                     )
                 }
+                val waiting = state.busy || state.stage == BrowserStage.TITLES && showingHome && !homeReady
+                LaunchedEffect(splash, waiting, state.error) {
+                    if (splash && (!waiting || state.error != null)) splash = false
+                }
+                LaunchedEffect(splash) {
+                    if (splash) {
+                        delay(SPLASH_LIMIT_MS)
+                        splash = false
+                    }
+                }
+                val splashAlpha by animateFloatAsState(if (splash) 1f else 0f, tween(400), label = "start screen")
+                if (splashAlpha > 0f) StartScreen(Modifier.fillMaxSize().graphicsLayer { alpha = splashAlpha })
             }
         }
         lifecycleScope.launch {
@@ -215,9 +236,12 @@ class MainActivity : ComponentActivity() {
     /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
-            Analytics.mark("key:" + KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_") +
-                if (event.repeatCount > 0) "+held" else "")
+            val key = KeyEvent.keyCodeToString(event.keyCode).removePrefix("KEYCODE_")
+            Analytics.mark("key:$key" + if (event.repeatCount > 0) "+held" else "")
+            Analytics.event("key", "key" to key)
         }
+        // Keys would move focus on the page hidden under the start screen.
+        if (splash) return true
         return super.dispatchKeyEvent(event)
     }
 
@@ -242,6 +266,7 @@ class MainActivity : ComponentActivity() {
                     navigationStore.clear()
                     navigationSelection = PlexNavigationSelection()
                     account = linked
+                    splash = true
                     state = state.copy(busy = true, pin = null, pinQr = null)
                     showServers(restore = true)
                     return@runAction
@@ -301,6 +326,7 @@ class MainActivity : ComponentActivity() {
             navigationStore.rememberServer(server.id)
             navigationSelection = navigationStore.load()
         }
+        homeReady = false
         homeState = HomeState(selected, lifecycleScope)
         openHome()
     }
@@ -587,5 +613,6 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val PIN_GENERATIONS = 4
+        const val SPLASH_LIMIT_MS = 6_000L
     }
 }
