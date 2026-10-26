@@ -103,11 +103,13 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 private const val MOVIE_GRID_HEADER_ITEMS = 1
 
@@ -146,7 +148,7 @@ private suspend fun LazyGridState.scrollToMovieLetter(index: Int) {
 /**
  * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
  * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
- * Vertical DPAD targets retain their column while off-screen rows are composed and revealed.
+ * Vertical DPAD targets retain their column and take focus when visible, without waiting for scroll completion.
  * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -263,34 +265,44 @@ fun MoviesScreen(
     LaunchedEffect(restoreEpoch, playbackRunning, modalOpen, state.total, state.loading) {
         if (playbackRunning || modalOpen ||
             (!needsFocus && (state.total > 0 || state.loading || railHasFocus || awaitingJump || railRestorePending))) return@LaunchedEffect
+        val focusEpoch = restoreEpoch
         if (restoreToSort) {
             grid.scrollToItem(0)
             snapshotFlow { headerMounted }.first { it }
             withFrameNanos { }
+            if (restoreEpoch != focusEpoch) return@LaunchedEffect
             sortFocus.requestFocus()
         } else if (state.total > 0 || state.loading) {
             val target = (pendingFocusIndex ?: focusedIndex).coerceIn(0, (state.total.takeIf { it > 0 } ?: 12) - 1)
             val gridIndex = target + MOVIE_GRID_HEADER_ITEMS
-            if (grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
-                if (directionalFocus) {
-                    val layout = grid.layoutInfo
-                    val cardHeight = layout.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
-                        ?.size?.height ?: 0
-                    val offset = if (gridIndex > grid.firstVisibleItemIndex)
-                        -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
-                    grid.animateScrollToItem(gridIndex, offset)
-                } else grid.scrollToItem(gridIndex)
+            coroutineScope {
+                if (grid.layoutInfo.visibleItemsInfo.none { it.index == gridIndex }) {
+                    if (directionalFocus) {
+                        val layout = grid.layoutInfo
+                        val cardHeight = layout.visibleItemsInfo.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
+                            ?.size?.height ?: 0
+                        val offset = if (gridIndex > grid.firstVisibleItemIndex)
+                            -(layout.viewportEndOffset - cardHeight).coerceAtLeast(0) else 0
+                        launch { grid.animateScrollToItem(gridIndex, offset) }
+                    } else grid.scrollToItem(gridIndex)
+                }
+                val requester = snapshotFlow {
+                    requesters[target]?.takeIf { grid.layoutInfo.visibleItemsInfo.any { it.index == gridIndex } }
+                }.filterNotNull().first()
+                withFrameNanos { }
+                if (needsFocus && restoreEpoch == focusEpoch) {
+                    focusedIndex = target
+                    requester.requestFocus()
+                }
             }
-            val requester = snapshotFlow { requesters[target] }.filterNotNull().first()
-            withFrameNanos { }
-            focusedIndex = target
-            requester.requestFocus()
         } else {
             grid.scrollToItem(0)
             snapshotFlow { headerMounted }.first { it }
             withFrameNanos { }
+            if (restoreEpoch != focusEpoch) return@LaunchedEffect
             backFocus.requestFocus()
         }
+        if (restoreEpoch != focusEpoch) return@LaunchedEffect
         pendingFocusIndex = null
         needsFocus = false
         directionalFocus = false
