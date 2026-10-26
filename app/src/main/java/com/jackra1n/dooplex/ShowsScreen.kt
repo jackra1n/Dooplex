@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -65,7 +63,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -125,7 +122,6 @@ internal fun ShowsScreen(
     var directional by remember(state) { mutableStateOf(false) }
     var focusEpoch by remember(state) { mutableIntStateOf(0) }
     var artworkRange by remember(state) { mutableStateOf(IntRange.EMPTY) }
-    val scrolling by remember(grid) { derivedStateOf { grid.isScrollInProgress } }
     val bringSpec = remember(state) {
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
@@ -430,9 +426,9 @@ internal fun ShowsScreen(
                             if (item?.childrenPath != null) needsFocus = true
                             if (item != null) onItem(item) else if (state.error != null) state.retry() else state.requestRange(index, index)
                         }
-                        if (episodes) EpisodeCard(item, posters, artworkWidth, enabled && !scrolling && index in artworkRange,
+                        if (episodes) EpisodeCard(item, posters, artworkWidth, enabled && index in artworkRange,
                             enabled, cardModifier, onFocus, onClick, "Episode ${index + 1}")
-                        else CollectionPosterCard(item, posters, artworkWidth, enabled && !scrolling && index in artworkRange,
+                        else CollectionPosterCard(item, posters, artworkWidth, enabled && index in artworkRange,
                             enabled, cardModifier, onFocus, onClick, "${noun.replaceFirstChar { it.uppercase() }} ${index + 1}")
                     }
                 }
@@ -465,6 +461,7 @@ private fun EpisodeCard(
     val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "episode focus")
     val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "episode highlight")
     val painter = rememberMovieArtworkPainter(item?.thumbPath, posters, artworkWidth, artworkWidth * 9 / 16, loadArtwork)
+    val instant = remember(item?.thumbPath, artworkWidth) { painter != null }
     val status = remember(item) {
         if (item == null) " " else buildList {
             if (item.durationMs > 0) add("${(item.durationMs / 60000).coerceAtLeast(1)} min")
@@ -496,7 +493,7 @@ private fun EpisodeCard(
                     drawRoundRect(CinemaColors.Foreground, cornerRadius = corner, alpha = light.value * 0.65f, style = stroke)
                 }
             }, contentAlignment = Alignment.Center) {
-            if (painter != null) Image(painter, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (painter != null) ArtworkImage(painter, fadeIn = !instant, Modifier.fillMaxSize())
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(12.dp)) {
                 Text((item?.title ?: placeholderLabel).take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.5f), fontSize = 32.sp)
                 if (item != null && item.thumbPath == null) Text("NO ARTWORK", color = CinemaColors.Muted, fontSize = 10.sp, letterSpacing = 1.sp)

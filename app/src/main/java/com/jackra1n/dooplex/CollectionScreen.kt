@@ -46,7 +46,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -139,7 +138,7 @@ private suspend fun LazyGridState.scrollToCollectionLetter(index: Int) {
  * Header focus reveals all chrome and top spacing, not just the active control's minimum bounds.
  * Navigation owns focus across route/busy transitions; only Down hands it to the compact header.
  * Its prior content viewport is retained separately while the complete header is revealed.
- * Idle lookahead warms the next one or two rows without competing with foreground artwork.
+ * Visible artwork loads while scrolling; idle lookahead warms the rows ahead without competing with it.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -157,8 +156,6 @@ internal fun CollectionScreen(
     onOpenShow: (PlexBrowseItem) -> Unit,
 ) {
     val grid = rememberLazyGridState()
-    // Only the scroll start/stop boundary invalidates artwork gates, never the pixel offset.
-    val scrolling by remember(grid) { derivedStateOf { grid.isScrollInProgress } }
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
@@ -458,8 +455,7 @@ internal fun CollectionScreen(
                 artworkRange = (first - columns).coerceAtLeast(0)..(last + columns)
                 if (first != previousFirst) forward = first > previousFirst
                 previousFirst = first
-                // Large 512px posters get one row; smaller tiles can keep two rows within 48 MiB.
-                val distance = columns * if (artworkWidth <= 384) 2 else 1
+                val distance = columns * if (artworkWidth <= 384) 3 else 2
                 lookahead = if (forward) last + 1..minOf(last + distance, state.total - 1)
                     else first - 1 downTo (first - distance).coerceAtLeast(0)
                 // The state owns metadata prefetch (one page behind / two ahead) and its bounded cache.
@@ -471,7 +467,7 @@ internal fun CollectionScreen(
             if (playbackRunning) return@LaunchedEffect
             val height = artworkWidth * 3 / 2
             snapshotFlow {
-                if (scrolling || sortOpen || state.selectedMovie != null || railHasFocus) emptyList() else
+                if (sortOpen || state.selectedMovie != null || railHasFocus) emptyList() else
                     lookahead.mapNotNull { state.itemAt(it)?.thumbPath }.distinct()
             }.distinctUntilChanged().collectLatest { paths ->
                 if (paths.isEmpty()) return@collectLatest
@@ -579,7 +575,7 @@ internal fun CollectionScreen(
                                 item = item,
                                 posters = posters,
                                 artworkWidth = artworkWidth,
-                                loadArtwork = !playbackRunning && !scrolling && index in artworkRange,
+                                loadArtwork = !playbackRunning && index in artworkRange,
                                 enabled = controlsEnabled,
                                 modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
                                     val count = if (state.total > 0) state.total else 12

@@ -1,10 +1,13 @@
 package com.jackra1n.dooplex
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,6 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
@@ -77,11 +82,12 @@ internal fun PosterArtwork(
     metadataLoading: Boolean = false,
 ) {
     val painter = rememberMovieArtworkPainter(path, posters, width, width * 3 / 2, load)
-    if (painter != null) {
-        Image(painter, contentDescription = null, modifier = modifier, contentScale = ContentScale.Crop)
-    } else {
-        Box(modifier.background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas))),
-            contentAlignment = Alignment.Center) {
+    val instant = remember(path, width) { painter != null }
+    Box(modifier.background(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas))),
+        contentAlignment = Alignment.Center) {
+        if (painter != null) {
+            ArtworkImage(painter, fadeIn = !instant, Modifier.fillMaxSize())
+        } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
                 Text(title.take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.45f),
                     fontSize = 44.sp, fontWeight = FontWeight.Light)
@@ -90,4 +96,16 @@ internal fun PosterArtwork(
             }
         }
     }
+}
+
+/** Artwork that arrives after its card appeared fades in; cache hits draw immediately. */
+@Composable
+internal fun ArtworkImage(painter: Painter, fadeIn: Boolean, modifier: Modifier) {
+    val alpha = remember { Animatable(if (fadeIn) 0f else 1f) }
+    LaunchedEffect(alpha) { alpha.animateTo(1f, tween(220)) }
+    Image(painter, contentDescription = null, contentScale = ContentScale.Crop,
+        modifier = modifier.graphicsLayer {
+            this.alpha = alpha.value
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+        })
 }
