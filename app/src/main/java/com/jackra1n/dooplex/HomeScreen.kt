@@ -164,6 +164,11 @@ internal fun HomeScreen(
         focusHero()
         focus.completeHeader("home")
     }
+    LaunchedEffect(focus.contentEpoch) {
+        if (focus.contentType != "home") return@LaunchedEffect
+        focusHero()
+        focus.completeContent("home")
+    }
     BackHandler(enabled = enabled && selected == null) {
         if (!heroFocused && shown != null) focusHero() else onBack()
     }

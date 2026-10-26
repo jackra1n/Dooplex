@@ -147,11 +147,11 @@ class MainActivity : ComponentActivity() {
                             selectedKey = navigationSelection.libraryFor(state.libraries, type)?.key,
                             onDismiss = {
                                 choosingLibraryType = null
-                                collectionFocus.confirmTab(type)
+                                collectionFocus.moveTab(type)
                             },
                             onChoose = {
                                 choosingLibraryType = null
-                                collectionFocus.confirmTab(type)
+                                collectionFocus.enterContent(type)
                                 selectLibrary(it)
                             },
                         )

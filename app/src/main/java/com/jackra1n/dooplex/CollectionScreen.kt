@@ -257,6 +257,19 @@ internal fun CollectionScreen(
         withFrameNanos { }
         focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
+    LaunchedEffect(state, focus.contentEpoch) {
+        val type = state.library.type
+        if (focus.contentType != type) return@LaunchedEffect
+        focusedIndex = 0
+        pendingFocusIndex = 0
+        navigationViewportIndex = -1
+        restoreToHeader = false
+        directionalFocus = false
+        needsFocus = true
+        restoreEpoch++
+        grid.scrollToItem(0)
+        focus.completeContent(type)
+    }
     LaunchedEffect(route, focus.headerEpoch, playbackRunning, modalOpen) {
         if (focus.headerRoute != route || playbackRunning || modalOpen) return@LaunchedEffect
         needsFocus = true

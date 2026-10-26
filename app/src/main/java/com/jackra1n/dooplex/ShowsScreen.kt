@@ -163,6 +163,14 @@ internal fun ShowsScreen(
         focusEpoch++
     }
 
+    LaunchedEffect(state, focus.contentEpoch) {
+        if (focus.contentType != "show") return@LaunchedEffect
+        focusedIndex = 0
+        navigationViewportIndex = -1
+        enterContent()
+        grid.scrollToItem(0)
+        focus.completeContent("show")
+    }
     LaunchedEffect(state, focus.navigationType, focus.navigationEpoch) {
         if (focus.navigationType == null) return@LaunchedEffect
         if (navigationViewportIndex < 0) {

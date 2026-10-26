@@ -90,6 +90,10 @@ internal class CollectionFocusState {
         private set
     var headerEpoch by mutableIntStateOf(0)
         private set
+    var contentType by mutableStateOf<String?>(null)
+        private set
+    var contentEpoch by mutableIntStateOf(0)
+        private set
 
     fun tab(type: String): FocusRequester = when (type) {
         "home" -> homeTab
@@ -109,8 +113,16 @@ internal class CollectionFocusState {
         navigationEpoch++
     }
 
-    fun confirmTab(type: String) {
-        moveTab(type)
+    /** A confirmed tab drops focus into its page (plx-native): the hero on Home, the first poster elsewhere. */
+    fun enterContent(type: String) {
+        navigationType = null
+        headerRoute = null
+        contentType = type
+        contentEpoch++
+    }
+
+    fun completeContent(type: String) {
+        if (contentType == type) contentType = null
     }
 
     fun enterHeader(route: String) {
@@ -255,7 +267,7 @@ internal fun CollectionNavigationBar(
                             indication = null, role = Role.Tab,
                             onClick = {
                                 if (enabled) {
-                                    focus.confirmTab(type)
+                                    focus.enterContent(type)
                                     when (type) {
                                         "home" -> onHome()
                                         "movie" -> onMovies()
