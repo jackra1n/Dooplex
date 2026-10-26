@@ -371,10 +371,9 @@ internal fun CollectionScreen(
         }
     }
 
+    // MovieBackdrop paints the screen's background together with its wash.
     BoxWithConstraints(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas, CinemaColors.Canvas)),
-        ).windowInsetsPadding(WindowInsets.safeDrawing)
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
             .then(if (selected != null) Modifier.clearAndSetSemantics { } else Modifier),
     ) {
         val compact = maxWidth < 700.dp

@@ -21,6 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
+import com.jackra1n.dooplex.ui.theme.CinemaColors
+import kotlin.math.roundToInt
 import java.io.IOException
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -80,9 +90,9 @@ internal fun MovieBackdrop(
         fade.animateTo(1f, tween(300, easing = FastOutSlowInEasing))
     }
     Box(modifier) {
+        // Both washes are opaque, so the old one stays whole underneath while the new one fades in.
         AtmosphericWash(previous, Modifier.fillMaxSize().graphicsLayer {
-            compositingStrategy = CompositingStrategy.ModulateAlpha
-            alpha = 1f - fade.value
+            alpha = if (fade.value < 1f) 1f else 0f
         })
         AtmosphericWash(current, Modifier.fillMaxSize().graphicsLayer {
             compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -91,37 +101,52 @@ internal fun MovieBackdrop(
     }
 }
 
-/** At most two cached brush layers; the short transition only changes compositor opacity. */
+/**
+ * The wash is soft enough to render once at 1/8 size and stretch, so each frame the GPU fills one
+ * texture instead of the screen gradient plus four colour pools.
+ */
 @Composable
 private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
     Box(modifier.drawWithCache {
-        val radius = maxOf(size.width, size.height) * 0.62f
-        val left = Brush.radialGradient(
-            listOf(colors.left.copy(alpha = colors.left.alpha * 0.28f), Color.Transparent),
-            Offset(size.width * 0.03f, size.height * 0.08f), radius,
+        val image = ImageBitmap(
+            (size.width / WASH_SCALE).toInt().coerceAtLeast(1),
+            (size.height / WASH_SCALE).toInt().coerceAtLeast(1),
         )
-        val right = Brush.radialGradient(
-            listOf(colors.right.copy(alpha = colors.right.alpha * 0.26f), Color.Transparent),
-            Offset(size.width * 0.98f, size.height * 0.16f), radius,
-        )
-        val lower = Brush.radialGradient(
-            listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.23f), Color.Transparent),
-            Offset(size.width * 0.96f, size.height * 1.02f), radius * 0.90f,
-        )
-        // This corner intentionally stays almost neutral instead of combining poster hues.
-        val muted = Brush.radialGradient(
-            listOf(Color(0xFF29292D).copy(alpha = 0.88f), Color.Transparent),
-            Offset(size.width * 0.05f, size.height * 0.94f), radius * 0.88f,
-        )
-        onDrawBehind {
-            if (colors != MovieAtmosphere.Neutral) {
-                drawRect(left)
-                drawRect(right)
-                drawRect(lower)
-                drawRect(muted)
-            }
+        CanvasDrawScope().draw(Density(1f), layoutDirection, Canvas(image), Size(image.width.toFloat(), image.height.toFloat())) {
+            drawWash(colors)
         }
+        val screen = IntSize(size.width.roundToInt(), size.height.roundToInt())
+        onDrawBehind { drawImage(image, dstSize = screen, filterQuality = FilterQuality.Low) }
     })
+}
+
+private const val WASH_SCALE = 8f
+
+private fun DrawScope.drawWash(colors: MovieAtmosphere) {
+    drawRect(Brush.verticalGradient(listOf(CinemaColors.Panel, CinemaColors.Canvas, CinemaColors.Canvas)))
+    if (colors == MovieAtmosphere.Neutral) return
+    val radius = maxOf(size.width, size.height) * 0.62f
+    val left = Brush.radialGradient(
+        listOf(colors.left.copy(alpha = colors.left.alpha * 0.28f), Color.Transparent),
+        Offset(size.width * 0.03f, size.height * 0.08f), radius,
+    )
+    val right = Brush.radialGradient(
+        listOf(colors.right.copy(alpha = colors.right.alpha * 0.26f), Color.Transparent),
+        Offset(size.width * 0.98f, size.height * 0.16f), radius,
+    )
+    val lower = Brush.radialGradient(
+        listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.23f), Color.Transparent),
+        Offset(size.width * 0.96f, size.height * 1.02f), radius * 0.90f,
+    )
+    // This corner intentionally stays almost neutral instead of combining poster hues.
+    val muted = Brush.radialGradient(
+        listOf(Color(0xFF29292D).copy(alpha = 0.88f), Color.Transparent),
+        Offset(size.width * 0.05f, size.height * 0.94f), radius * 0.88f,
+    )
+    drawRect(left)
+    drawRect(right)
+    drawRect(lower)
+    drawRect(muted)
 }
 
 /**
