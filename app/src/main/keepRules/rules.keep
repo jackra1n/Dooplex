@@ -1,0 +1,5 @@
+# R8's package-scoped optimization can move one part of a Kotlin multifile class (FooKt__Bar) to
+# another package while its package-private parent stays behind; ART then refuses to load it with
+# IllegalAccessError, which crashes the app at launch. Keeping their names keeps them together.
+-keepnames class kotlin.**Kt__*
+-keepnames class kotlinx.**Kt__*
