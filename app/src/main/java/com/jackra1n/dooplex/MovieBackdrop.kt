@@ -126,6 +126,7 @@ private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
  * distinct saturated regions instead of averaging complementary colors into a gray wash.
  * Region-weighted selection favors the poster's layout, with separated hues where available.
  * Selected hues blend toward luminance gray so artwork stays the focus, not the background.
+ * Brightness is capped before compositing; dim artwork is never amplified.
  */
 internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = withContext(Dispatchers.Default) {
     val hueBuckets = 12
@@ -207,9 +208,9 @@ internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = w
         val red = sums[offset] / weight
         val green = sums[offset + 1] / weight
         val blue = sums[offset + 2] / weight
-        val ceiling = if (bucket == neutralBucket) 0.36f else 0.72f
-        val scale = minOf(1.8f, ceiling / maxOf(red, green, blue))
         val gray = red * 0.2126f + green * 0.7152f + blue * 0.0722f
+        val ceiling = if (bucket == neutralBucket) 0.36f else 0.56f
+        val scale = minOf(1f, ceiling / maxOf(red, green, blue), 0.24f / gray)
         return Color(
             ((gray + (red - gray) * 0.60f) * scale).coerceIn(0f, ceiling),
             ((gray + (green - gray) * 0.60f) * scale).coerceIn(0f, ceiling),
