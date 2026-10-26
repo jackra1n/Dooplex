@@ -33,6 +33,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -48,6 +50,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
     private val lock = Any()
     private val memory = LinkedHashMap<Key, MemoryEntry>(32, 0.75f, true)
     private val requests = HashMap<Key, Request>()
+    private val idle = MutableStateFlow(true)
     private var memoryBytes = 0L
     private var closed = false
 
@@ -79,6 +82,11 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
             if (closed) null else memory[Key(thumbPath, width, height)]?.atmosphere
         }
 
+    /** Lookahead yields to foreground requests before starting its next speculative image. */
+    internal suspend fun awaitIdle() {
+        idle.first { it }
+    }
+
     suspend fun load(thumbPath: String, width: Int, height: Int): Bitmap {
         currentCoroutineContext().ensureActive()
         if (width !in 1..MAX_DIMENSION || height !in 1..MAX_DIMENSION) {
@@ -91,9 +99,13 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
             val shared = requests[key] ?: run {
                 val created = Request(scope.async(start = CoroutineStart.LAZY) { fetch(key) })
                 requests[key] = created
+                idle.value = false
                 created.result.invokeOnCompletion {
                     synchronized(lock) {
-                        if (requests[key] === created) requests.remove(key)
+                        if (requests[key] === created) {
+                            requests.remove(key)
+                            idle.value = requests.isEmpty()
+                        }
                     }
                 }
                 created
@@ -107,7 +119,10 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
             val cancel = synchronized(lock) {
                 request.consumers -= 1
                 if (request.consumers == 0 && !request.result.isCompleted) {
-                    if (requests[key] === request) requests.remove(key)
+                    if (requests[key] === request) {
+                        requests.remove(key)
+                        idle.value = requests.isEmpty()
+                    }
                     true
                 } else {
                     false
@@ -124,6 +139,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
             if (closed) return
             closed = true
             requests.clear()
+            idle.value = true
             memory.clear()
             memoryBytes = 0L
         }

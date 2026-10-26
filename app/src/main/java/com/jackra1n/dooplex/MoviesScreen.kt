@@ -94,6 +94,7 @@ import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -107,6 +108,7 @@ private val MovieGridBringIntoViewSpec = object : BringIntoViewSpec {}
 /**
  * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
  * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
+ * Idle lookahead warms the next one or two rows without competing with foreground artwork.
  */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -137,6 +139,7 @@ fun MoviesScreen(
     var wasPlaying by remember { mutableStateOf(playbackRunning) }
     var lastGeneration by remember(state) { mutableIntStateOf(state.generation) }
     var artworkRange by remember(state.generation) { mutableStateOf(IntRange.EMPTY) }
+    var lookahead by remember(state.generation) { mutableStateOf<IntProgression>(IntRange.EMPTY) }
     var railHasFocus by remember { mutableStateOf(false) }
     var gridHasFocus by remember { mutableStateOf(false) }
     var awaitingJump by remember { mutableStateOf(false) }
@@ -301,8 +304,10 @@ fun MoviesScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        LaunchedEffect(state, state.generation, columns, playbackRunning) {
+        LaunchedEffect(state, state.generation, columns, artworkWidth, playbackRunning) {
             if (playbackRunning) return@LaunchedEffect
+            var previousFirst = 0
+            var forward = true
             snapshotFlow {
                 val visible = grid.layoutInfo.visibleItemsInfo
                 val firstMovie = visible.firstOrNull { it.index >= MOVIE_GRID_HEADER_ITEMS }
@@ -314,8 +319,39 @@ fun MoviesScreen(
                 }
             }.filterNotNull().distinctUntilChanged().collect { (first, last) ->
                 artworkRange = (first - columns).coerceAtLeast(0)..(last + columns)
+                if (first != previousFirst) forward = first > previousFirst
+                previousFirst = first
+                // Large 512px posters get one row; smaller tiles can keep two rows within 48 MiB.
+                val distance = columns * if (artworkWidth <= 384) 2 else 1
+                lookahead = if (forward) last + 1..minOf(last + distance, state.total - 1)
+                    else first - 1 downTo (first - distance).coerceAtLeast(0)
                 // The state owns metadata prefetch (one page behind / two ahead) and its bounded cache.
                 state.requestRange(first, last.coerceAtMost((state.total - 1).coerceAtLeast(0)))
+            }
+        }
+
+        LaunchedEffect(state, state.generation, posters, artworkWidth, playbackRunning) {
+            if (playbackRunning) return@LaunchedEffect
+            val height = artworkWidth * 3 / 2
+            snapshotFlow {
+                if (scrolling || sortOpen || state.selectedMovie != null || railHasFocus) emptyList() else
+                    lookahead.mapNotNull { state.itemAt(it)?.thumbPath }.distinct()
+            }.distinctUntilChanged().collectLatest { paths ->
+                if (paths.isEmpty()) return@collectLatest
+                repeat(2) { withFrameNanos { } }
+                // One speculative image at a time, exact display dimensions, nearest row first.
+                for (path in paths) {
+                    if (posters.cached(path, artworkWidth, height) != null) continue
+                    posters.awaitIdle()
+                    try {
+                        posters.load(path, artworkWidth, height)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: java.io.IOException) {
+                        // A visible card can retry later; speculative failures aren't screen errors.
+                    }
+                    withFrameNanos { }
+                }
             }
         }
 
