@@ -77,8 +77,8 @@ internal fun CollectionPosterCard(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).then(if (Analytics.flag("cardclip")) Modifier.clip(shape) else Modifier)
-            .background(CinemaColors.Panel)
-            .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
+            .then(if (Analytics.flag("cardborder")) Modifier.background(CinemaColors.Panel)
+                .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape) else Modifier)
             .drawWithCache {
                 val highlight = Brush.radialGradient(
                     colors = listOf(CinemaColors.Foreground.copy(alpha = 0.08f), Color.Transparent),
@@ -120,9 +120,11 @@ internal fun CollectionPosterCard(
                 }
             }
         }
-        Text(item?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.85f),
-            fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(item?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (Analytics.flag("cardtext")) {
+            Text(item?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.85f),
+                fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
