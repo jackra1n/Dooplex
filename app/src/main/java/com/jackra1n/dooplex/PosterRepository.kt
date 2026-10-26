@@ -73,6 +73,12 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         if (closed) null else memory[Key(thumbPath, width, height)]?.bitmap
     }
 
+    /** Published atomically with its bitmap and evicted with the same bounded memory entry. */
+    internal fun cachedAtmosphere(thumbPath: String, width: Int, height: Int): MovieAtmosphere? =
+        synchronized(lock) {
+            if (closed) null else memory[Key(thumbPath, width, height)]?.atmosphere
+        }
+
     suspend fun load(thumbPath: String, width: Int, height: Int): Bitmap {
         currentCoroutineContext().ensureActive()
         if (width !in 1..MAX_DIMENSION || height !in 1..MAX_DIMENSION) {
@@ -164,7 +170,10 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
 
     private suspend fun remember(key: Key, bitmap: Bitmap) {
         currentCoroutineContext().ensureActive()
-        val entry = MemoryEntry(bitmap, bitmap.allocationByteCount.toLong())
+        // Sampling finishes off-main before publication, so a displayed poster's palette
+        // is already available to synchronous focus updates without another request.
+        val entry = MemoryEntry(bitmap, bitmap.allocationByteCount.toLong(), extractMovieAtmosphere(bitmap))
+        currentCoroutineContext().ensureActive()
         bitmap.prepareToDraw()
         synchronized(lock) {
             if (closed || entry.bytes > MEMORY_BUDGET_BYTES) return
@@ -426,7 +435,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
     }
 
     private data class Key(val thumbPath: String, val width: Int, val height: Int)
-    private data class MemoryEntry(val bitmap: Bitmap, val bytes: Long)
+    private data class MemoryEntry(val bitmap: Bitmap, val bytes: Long, val atmosphere: MovieAtmosphere)
     private class Request(val result: Deferred<Bitmap>, var consumers: Int = 0)
     private data class DiskEntry(val file: File, val bytes: Long, val modified: Long)
     private class ArtworkException(message: String) : IOException(message)

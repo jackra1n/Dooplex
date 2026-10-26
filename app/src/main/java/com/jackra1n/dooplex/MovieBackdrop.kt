@@ -1,11 +1,7 @@
 package com.jackra1n.dooplex
 
 import android.graphics.Bitmap
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,29 +14,22 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.lerp
 import java.io.IOException
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 @Immutable
 internal data class MovieAtmosphere(val left: Color, val right: Color, val lower: Color) {
-    fun blend(other: MovieAtmosphere, fraction: Float) = MovieAtmosphere(
-        lerp(left, other.left, fraction), lerp(right, other.right, fraction), lerp(lower, other.lower, fraction),
-    )
-
     companion object {
         val Neutral = MovieAtmosphere(Color.Transparent, Color.Transparent, Color.Transparent)
     }
 }
 
-/** At most two static gradient layers; only their compositor opacity changes during the fade. */
+/** Cached focus colors are synchronous; only genuinely cold artwork waits for the shared load. */
 @Composable
 internal fun MovieBackdrop(
     movie: PlexBrowseItem?,
@@ -49,94 +38,71 @@ internal fun MovieBackdrop(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val palettes = remember(posters) { LinkedHashMap<String, MovieAtmosphere>(64, 0.75f, true) }
-    var resolved by remember(posters) { mutableStateOf(MovieAtmosphere.Neutral) }
-    var previous by remember(posters) { mutableStateOf(MovieAtmosphere.Neutral) }
-    var current by remember(posters) { mutableStateOf(MovieAtmosphere.Neutral) }
-    val fade = remember(posters) { Animatable(1f) }
     val path = movie?.thumbPath
-
+    val artworkHeight = artworkWidth * 3 / 2
+    // Keying cold state by artwork also clears the previous poster's colors immediately.
+    var loaded by remember(posters, path, artworkWidth) { mutableStateOf(MovieAtmosphere.Neutral) }
+    val cached = path?.let { posters.cachedAtmosphere(it, artworkWidth, artworkHeight) }
     LaunchedEffect(posters, path, artworkWidth, active) {
-        if (!active) return@LaunchedEffect
-        // Rapid focus traversal retains the current wash: no extra requests or pixel work.
-        delay(180)
-        if (path == null) {
-            resolved = MovieAtmosphere.Neutral
-            return@LaunchedEffect
-        }
-        palettes[path]?.let {
-            resolved = it
-            return@LaunchedEffect
-        }
+        if (!active || path == null || cached != null) return@LaunchedEffect
         try {
-            val height = artworkWidth * 3 / 2
-            val bitmap = posters.cached(path, artworkWidth, height) ?: posters.load(path, artworkWidth, height)
-            val colors = extractMovieAtmosphere(bitmap)
+            posters.load(path, artworkWidth, artworkHeight)
             currentCoroutineContext().ensureActive()
-            palettes[path] = colors
-            if (palettes.size > 64) palettes.entries.iterator().apply { next(); remove() }
-            resolved = colors
+            loaded = posters.cachedAtmosphere(path, artworkWidth, artworkHeight) ?: MovieAtmosphere.Neutral
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: IOException) {
-            resolved = MovieAtmosphere.Neutral
+            loaded = MovieAtmosphere.Neutral
         }
     }
-    LaunchedEffect(resolved, posters) {
-        if (resolved == current) return@LaunchedEffect
-        previous = previous.blend(current, fade.value)
-        current = resolved
-        fade.snapTo(0f)
-        fade.animateTo(1f, tween(650, easing = FastOutSlowInEasing))
-    }
-    Box(modifier) {
-        AtmosphericWash(previous, Modifier.fillMaxSize().graphicsLayer {
-            compositingStrategy = CompositingStrategy.ModulateAlpha
-            alpha = 1f - fade.value
-        })
-        AtmosphericWash(current, Modifier.fillMaxSize().graphicsLayer {
-            compositingStrategy = CompositingStrategy.ModulateAlpha
-            alpha = fade.value
-        })
-    }
+    AtmosphericWash(cached ?: loaded, modifier)
 }
 
+/** Static overlapping brushes, rebuilt only for palette/size changes; no fade or frame-time work. */
 @Composable
 private fun AtmosphericWash(colors: MovieAtmosphere, modifier: Modifier) {
-    if (colors == MovieAtmosphere.Neutral) return
     Box(modifier.drawWithCache {
-        val radius = maxOf(size.width, size.height) * 0.72f
+        val radius = maxOf(size.width, size.height) * 0.62f
         val left = Brush.radialGradient(
-            listOf(colors.left.copy(alpha = colors.left.alpha * 0.58f), Color.Transparent),
-            Offset(size.width * 0.08f, size.height * 0.20f), radius,
+            listOf(colors.left.copy(alpha = colors.left.alpha * 0.44f), Color.Transparent),
+            Offset(size.width * 0.03f, size.height * 0.08f), radius,
         )
         val right = Brush.radialGradient(
-            listOf(colors.right.copy(alpha = colors.right.alpha * 0.50f), Color.Transparent),
-            Offset(size.width * 0.93f, size.height * 0.28f), radius,
+            listOf(colors.right.copy(alpha = colors.right.alpha * 0.40f), Color.Transparent),
+            Offset(size.width * 0.98f, size.height * 0.16f), radius,
         )
         val lower = Brush.radialGradient(
-            listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.24f), Color.Transparent),
-            Offset(size.width * 0.56f, size.height * 1.08f), radius * 0.80f,
+            listOf(colors.lower.copy(alpha = colors.lower.alpha * 0.36f), Color.Transparent),
+            Offset(size.width * 0.96f, size.height * 1.02f), radius * 0.90f,
+        )
+        // This corner intentionally stays almost neutral instead of combining poster hues.
+        val muted = Brush.radialGradient(
+            listOf(Color(0xFF29292D).copy(alpha = 0.88f), Color.Transparent),
+            Offset(size.width * 0.05f, size.height * 0.94f), radius * 0.88f,
         )
         onDrawBehind {
-            drawRect(left)
-            drawRect(right)
-            drawRect(lower)
+            if (colors != MovieAtmosphere.Neutral) {
+                drawRect(left)
+                drawRect(right)
+                drawRect(lower)
+                drawRect(muted)
+            }
         }
     })
 }
 
-/** Samples a fixed 18×27 grid off-main, not a full-resolution image or a per-frame blur. */
+/**
+ * Samples only 18×27 pixels off-main once per repository bitmap. Hue buckets preserve
+ * distinct saturated regions instead of averaging complementary colors into a gray wash.
+ * Region-weighted selection favors the poster's layout, with separated hues where available.
+ */
 internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = withContext(Dispatchers.Default) {
-    val sums = FloatArray(12)
+    val hueBuckets = 12
+    val neutralBucket = hueBuckets
+    // Each bucket stores weighted RGB, total weight and three spatial-region weights.
+    val stride = 7
+    val sums = FloatArray((hueBuckets + 1) * stride)
     val context = currentCoroutineContext()
-    fun accumulate(band: Int, red: Float, green: Float, blue: Float, weight: Float) {
-        val offset = band * 4
-        sums[offset] += red * weight
-        sums[offset + 1] += green * weight
-        sums[offset + 2] += blue * weight
-        sums[offset + 3] += weight
-    }
     for (row in 0 until 27) {
         context.ensureActive()
         val y = ((row + 0.5f) * bitmap.height / 27).toInt().coerceAtMost(bitmap.height - 1)
@@ -149,26 +115,82 @@ internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = w
             val blue = (pixel and 255) / 255f
             val maximum = maxOf(red, green, blue)
             if (alpha < 0.5f || maximum < 0.045f) continue
-            val saturation = (maximum - minOf(red, green, blue)) / maximum
-            val weight = alpha * (0.18f + saturation * 0.82f)
-            accumulate(if (column < 9) 0 else 1, red, green, blue, weight)
-            if (row >= 14) accumulate(2, red, green, blue, weight)
+            val delta = maximum - minOf(red, green, blue)
+            val saturation = delta / maximum
+            val bucket = if (saturation < 0.18f) {
+                neutralBucket
+            } else {
+                val hue = when (maximum) {
+                    red -> (green - blue) / delta
+                    green -> (blue - red) / delta + 2f
+                    else -> (red - green) / delta + 4f
+                }
+                (((hue + 6f) % 6f) * 2f).toInt().coerceIn(0, hueBuckets - 1)
+            }
+            val weight = alpha * (0.18f + saturation * 0.82f) * (0.25f + maximum * 0.75f)
+            val offset = bucket * stride
+            sums[offset] += red * weight
+            sums[offset + 1] += green * weight
+            sums[offset + 2] += blue * weight
+            sums[offset + 3] += weight
+            if (row < 18) sums[offset + if (column < 9) 4 else 5] += weight
+            if (row >= 14) sums[offset + 6] += weight
         }
     }
-    fun color(band: Int): Color {
-        val offset = band * 4
+    var strongestHue = 0f
+    var chromaticWeight = 0f
+    for (bucket in 0 until hueBuckets) {
+        val weight = sums[bucket * stride + 3]
+        strongestHue = maxOf(strongestHue, weight)
+        chromaticWeight += weight
+    }
+    // Tiny colored details must not turn an otherwise monochrome image into a neon wash.
+    val useHues = chromaticWeight > sums[neutralBucket * stride + 3] * 0.15f
+    val selected = IntArray(3) { -1 }
+    fun dominant(region: Int, distinct: Boolean): Int {
+        var best = -1
+        var bestScore = 0f
+        for (bucket in 0 until hueBuckets) {
+            val offset = bucket * stride
+            val weight = sums[offset + 3]
+            if (weight < strongestHue * 0.10f) continue
+            if (distinct && selected.any { previous ->
+                    if (previous < 0) false else {
+                        val distance = abs(bucket - previous)
+                        minOf(distance, hueBuckets - distance) < 2
+                    }
+                }) continue
+            val score = weight * 0.45f + sums[offset + 4 + region] * 0.90f
+            if (score > bestScore) {
+                bestScore = score
+                best = bucket
+            }
+        }
+        return best
+    }
+    fun color(bucket: Int): Color {
+        if (bucket < 0) return Color.Transparent
+        val offset = bucket * stride
         val weight = sums[offset + 3]
         if (weight <= 0f) return Color.Transparent
         val red = sums[offset] / weight
         val green = sums[offset + 1] / weight
         val blue = sums[offset + 2] / weight
-        val gray = (red + green + blue) / 3
-        val scale = minOf(1.35f, 0.52f / maxOf(red, green, blue))
+        val ceiling = if (bucket == neutralBucket) 0.36f else 0.72f
+        val scale = minOf(1.8f, ceiling / maxOf(red, green, blue))
         return Color(
-            ((red * 0.88f + gray * 0.12f) * scale).coerceIn(0f, 0.55f),
-            ((green * 0.88f + gray * 0.12f) * scale).coerceIn(0f, 0.55f),
-            ((blue * 0.88f + gray * 0.12f) * scale).coerceIn(0f, 0.55f),
+            (red * scale).coerceIn(0f, ceiling),
+            (green * scale).coerceIn(0f, ceiling),
+            (blue * scale).coerceIn(0f, ceiling),
         )
     }
-    MovieAtmosphere(color(0), color(1), color(2))
+    for (region in selected.indices) {
+        selected[region] = if (useHues) {
+            dominant(region, distinct = true).takeIf { it >= 0 } ?: dominant(region, distinct = false)
+        } else {
+            neutralBucket
+        }
+    }
+    context.ensureActive()
+    MovieAtmosphere(color(selected[0]), color(selected[1]), color(selected[2]))
 }

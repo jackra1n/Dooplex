@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -39,6 +42,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -96,11 +100,15 @@ import kotlinx.coroutines.flow.first
 
 private const val MOVIE_GRID_HEADER_ITEMS = 1
 
+// TV's default pivot scrolls even fully visible cards; horizontal moves must leave the row still.
+@OptIn(ExperimentalFoundationApi::class)
+private val MovieGridBringIntoViewSpec = object : BringIntoViewSpec {}
+
 /**
- * Header and posters share one lazy viewport, so controls scroll away without a fixed clipping edge.
- * The mounted grid retains its offset across details/playback; the alphabet gutter never resizes it.
+ * Header and posters share one lazy viewport; letter focus previews a jump without leaving the rail.
+ * Focus uses unscaled card bounds and minimum reveal scrolling; details/playback retain the viewport.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MoviesScreen(
     state: MovieLibraryState,
@@ -132,6 +140,7 @@ fun MoviesScreen(
     var railHasFocus by remember { mutableStateOf(false) }
     var gridHasFocus by remember { mutableStateOf(false) }
     var awaitingJump by remember { mutableStateOf(false) }
+    var returnAfterJump by remember { mutableStateOf(false) }
     var railRestorePending by remember { mutableStateOf(false) }
     var lastRailKey by rememberSaveable(state.library.key) { mutableStateOf<String?>(null) }
     val railStatusFocus = remember { FocusRequester() }
@@ -145,10 +154,15 @@ fun MoviesScreen(
     fun restoreGrid() {
         restoreToSort = false
         awaitingJump = false
+        returnAfterJump = false
         railRestorePending = false
         pendingFocusIndex = focusedIndex
         needsFocus = true
         restoreEpoch++
+    }
+
+    fun leaveAlphabet() {
+        if (awaitingJump) returnAfterJump = true else restoreGrid()
     }
 
     fun closeDetails() {
@@ -174,7 +188,9 @@ fun MoviesScreen(
         restoreToSort = false
         // The server gives an absolute title-sort index; jump directly, including uncached pages.
         grid.scrollToItem(jump.index + MOVIE_GRID_HEADER_ITEMS)
-        restoreGrid()
+        awaitingJump = false
+        pendingFocusIndex = null
+        if (returnAfterJump || !railHasFocus && !railRestorePending) restoreGrid()
     }
     LaunchedEffect(playbackRunning) {
         if (wasPlaying && !playbackRunning) {
@@ -227,7 +243,7 @@ fun MoviesScreen(
                 restoreEpoch++
             }
             selected != null -> closeDetails()
-            railHasFocus -> restoreGrid()
+            railHasFocus -> leaveAlphabet()
             else -> onBack()
         }
     }
@@ -281,7 +297,7 @@ fun MoviesScreen(
             movie = state.itemAt(focusedIndex),
             posters = posters,
             artworkWidth = artworkWidth,
-            active = !scrolling && !playbackRunning,
+            active = !playbackRunning,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -304,94 +320,96 @@ fun MoviesScreen(
         }
 
         Row(Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
-                state = grid,
-                contentPadding = PaddingValues(start = edge, end = 18.dp, bottom = 40.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                modifier = Modifier.weight(1f).fillMaxHeight()
-                    .onFocusChanged { if (!it.hasFocus) gridHasFocus = false }.focusGroup(),
-            ) {
-                item(key = "movies-header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
-                    DisposableEffect(Unit) {
-                        headerMounted = true
-                        onDispose { headerMounted = false }
-                    }
-                    MoviesHeader(
-                        state = state,
-                        accountName = accountName,
-                        error = error,
-                        compact = compact,
-                        enabled = controlsEnabled,
-                        backFocus = backFocus,
-                        sortFocus = sortFocus,
-                        onBack = onBack,
-                        onSort = { restoreGrid(); sortOpen = true },
-                        onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
-                        modifier = Modifier.onFocusChanged { if (it.hasFocus) gridHasFocus = false }.focusGroup(),
-                    )
-                }
-                if (state.total == 0 && !state.loading) {
-                    item(key = "movies-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
-                        Column(
-                            Modifier.fillMaxWidth().height(emptyHeight),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(if (state.error != null) "Your library couldn't be loaded" else if (state.unwatchedOnly) "All caught up" else "No movies here yet",
-                                color = CinemaColors.Foreground, fontSize = 28.sp, fontWeight = FontWeight.Medium)
-                            Spacer(Modifier.height(14.dp))
-                            Text(state.error ?: if (state.unwatchedOnly) "Turn off Unwatched to see your whole collection." else "Movies added to this Plex library will appear here.",
-                                color = CinemaColors.Muted, fontSize = 18.sp, modifier = Modifier.widthIn(max = 600.dp))
-                            Spacer(Modifier.height(24.dp))
-                            if (state.error != null) CinemaButton(onClick = state::retry, enabled = controlsEnabled) { ControlText("Try again") }
-                            else if (state.unwatchedOnly) CinemaButton(
-                                onClick = { restoreGrid(); state.setUnwatchedOnly(false) }, enabled = controlsEnabled,
-                            ) { ControlText("Show all movies") }
+            CompositionLocalProvider(LocalBringIntoViewSpec provides MovieGridBringIntoViewSpec) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = grid,
+                    contentPadding = PaddingValues(start = edge, end = 18.dp, bottom = 40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                        .onFocusChanged { if (!it.hasFocus) gridHasFocus = false }.focusGroup(),
+                ) {
+                    item(key = "movies-header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                        DisposableEffect(Unit) {
+                            headerMounted = true
+                            onDispose { headerMounted = false }
                         }
-                    }
-                } else {
-                    items(
-                        count = if (state.total > 0) state.total else 12,
-                        key = { index -> (state.generation.toLong() shl 32) or index.toLong() },
-                        contentType = { "movie-poster" },
-                    ) { index ->
-                        val item = if (state.total > 0) state.itemAt(index) else null
-                        val requester = remember(state.generation, index) { FocusRequester() }
-                        DisposableEffect(requester) {
-                            requesters[index] = requester
-                            onDispose { requesters.remove(index) }
-                        }
-                        MoviePosterCard(
-                            movie = item,
-                            posters = posters,
-                            artworkWidth = artworkWidth,
-                            loadArtwork = !playbackRunning && !scrolling && index in artworkRange,
+                        MoviesHeader(
+                            state = state,
+                            accountName = accountName,
+                            error = error,
+                            compact = compact,
                             enabled = controlsEnabled,
-                            modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
-                                val count = if (state.total > 0) state.total else 12
-                                val rowEnd = index % columns == columns - 1 || index == count - 1
-                                if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
-                                    if (event.type == KeyEventType.KeyDown) enterAlphabet()
-                                    true
-                                } else false
-                            },
-                            onFocus = {
-                                if (controlsEnabled && !needsFocus && pendingFocusIndex == null) focusedIndex = index
-                                gridHasFocus = true
-                                railRestorePending = false
-                            },
-                            onClick = {
-                                focusedIndex = index
-                                railRestorePending = false
-                                if (item != null) {
-                                    detailsIndex = index
-                                    state.selectMovie(item)
-                                } else state.requestRange(index, index)
-                            },
-                            placeholderLabel = "Movie ${index + 1}",
+                            backFocus = backFocus,
+                            sortFocus = sortFocus,
+                            onBack = onBack,
+                            onSort = { restoreGrid(); sortOpen = true },
+                            onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
+                            modifier = Modifier.onFocusChanged { if (it.hasFocus) gridHasFocus = false }.focusGroup(),
                         )
+                    }
+                    if (state.total == 0 && !state.loading) {
+                        item(key = "movies-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
+                            Column(
+                                Modifier.fillMaxWidth().height(emptyHeight),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(if (state.error != null) "Your library couldn't be loaded" else if (state.unwatchedOnly) "All caught up" else "No movies here yet",
+                                    color = CinemaColors.Foreground, fontSize = 28.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(14.dp))
+                                Text(state.error ?: if (state.unwatchedOnly) "Turn off Unwatched to see your whole collection." else "Movies added to this Plex library will appear here.",
+                                    color = CinemaColors.Muted, fontSize = 18.sp, modifier = Modifier.widthIn(max = 600.dp))
+                                Spacer(Modifier.height(24.dp))
+                                if (state.error != null) CinemaButton(onClick = state::retry, enabled = controlsEnabled) { ControlText("Try again") }
+                                else if (state.unwatchedOnly) CinemaButton(
+                                    onClick = { restoreGrid(); state.setUnwatchedOnly(false) }, enabled = controlsEnabled,
+                                ) { ControlText("Show all movies") }
+                            }
+                        }
+                    } else {
+                        items(
+                            count = if (state.total > 0) state.total else 12,
+                            key = { index -> (state.generation.toLong() shl 32) or index.toLong() },
+                            contentType = { "movie-poster" },
+                        ) { index ->
+                            val item = if (state.total > 0) state.itemAt(index) else null
+                            val requester = remember(state.generation, index) { FocusRequester() }
+                            DisposableEffect(requester) {
+                                requesters[index] = requester
+                                onDispose { requesters.remove(index) }
+                            }
+                            MoviePosterCard(
+                                movie = item,
+                                posters = posters,
+                                artworkWidth = artworkWidth,
+                                loadArtwork = !playbackRunning && !scrolling && index in artworkRange,
+                                enabled = controlsEnabled,
+                                modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
+                                    val count = if (state.total > 0) state.total else 12
+                                    val rowEnd = index % columns == columns - 1 || index == count - 1
+                                    if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
+                                        if (event.type == KeyEventType.KeyDown) enterAlphabet()
+                                        true
+                                    } else false
+                                },
+                                onFocus = {
+                                    if (controlsEnabled && !needsFocus && pendingFocusIndex == null) focusedIndex = index
+                                    gridHasFocus = true
+                                    railRestorePending = false
+                                },
+                                onClick = {
+                                    focusedIndex = index
+                                    railRestorePending = false
+                                    if (item != null) {
+                                        detailsIndex = index
+                                        state.selectMovie(item)
+                                    } else state.requestRange(index, index)
+                                },
+                                placeholderLabel = "Movie ${index + 1}",
+                            )
+                        }
                     }
                 }
             }
@@ -404,18 +422,20 @@ fun MoviesScreen(
                 requesters = railRequesters,
                 statusFocus = railStatusFocus,
                 onFocusChanged = { railHasFocus = it },
-                onExit = ::restoreGrid,
+                onExit = ::leaveAlphabet,
                 onRetry = {
                     railRestorePending = true
                     state.retryAlphabet()
                 },
-                onChoose = { letter ->
-                    lastRailKey = letter.key
+                onChoose = { leaveAlphabet() },
+                onLetterFocus = { key ->
+                    lastRailKey = key
                     awaitingJump = true
+                    returnAfterJump = false
+                    needsFocus = false
                     railRestorePending = false
-                    state.jumpToLetter(letter.key)
+                    state.jumpToLetter(key)
                 },
-                onLetterFocus = { lastRailKey = it },
                 modifier = Modifier.width(railWidth).fillMaxHeight()
                     .graphicsLayer {
                         alpha = railOpacity.value
@@ -581,7 +601,7 @@ private fun MovieAlphabetRail(
         Text(
             "A–Z", color = CinemaColors.Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 6.dp).semantics {
-                contentDescription = if (titleSorted) "Jump by title" else "Jump by title. Choosing a letter switches sort to title."
+                contentDescription = if (titleSorted) "Focus a letter to jump by title" else "Focus a letter to switch sort to title and jump."
             },
         )
         Text(if (titleSorted) "Jump" else "Sort", color = CinemaColors.Muted, fontSize = 10.sp,
@@ -738,9 +758,6 @@ private fun MoviePosterCard(
         modifier.onFocusChanged {
             focused = it.isFocused
             if (it.isFocused) onFocus()
-        }.graphicsLayer {
-            scaleX = scale.value
-            scaleY = scale.value
         }.clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
             enabled = enabled, role = Role.Button, onClick = onClick,
@@ -748,6 +765,9 @@ private fun MoviePosterCard(
             contentDescription = if (movie == null) "$placeholderLabel, loading. Select to request this movie."
                 else listOfNotNull(movie.title, movie.subtitle.takeIf { it.isNotBlank() },
                     if (movie.watched) "Watched" else if (movie.viewOffsetMs > 0) "Partially watched" else null).joinToString(", ")
+        }.graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
         },
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
