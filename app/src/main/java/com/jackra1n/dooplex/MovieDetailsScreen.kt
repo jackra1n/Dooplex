@@ -574,7 +574,7 @@ private fun DetailRatingBadge(rating: PlexMediaRating, compact: Boolean) {
 
 /** A vector triangle avoids depending on whichever play glyph happens to exist in the TV font. */
 @Composable
-private fun DetailPlayIcon(compact: Boolean) {
+internal fun DetailPlayIcon(compact: Boolean) {
     val color = LocalContentColor.current
     Box(Modifier.size(if (compact) 12.dp else 15.dp).drawWithCache {
         val triangle = Path().apply {
