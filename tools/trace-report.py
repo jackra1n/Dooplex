@@ -84,7 +84,8 @@ def namer(methods, mapping):
             klass = klass.strip("L;").replace("/", ".")
             original = classes.get(klass, klass)
             names = members.get((klass, method))
-            method = "/".join(sorted(names)) if names else method
+            if names and len(names) == 1:
+                method = next(iter(names))
             cache[mid] = f"{original.rsplit('.', 1)[-1]}.{method}"
         return cache[mid]
 
@@ -122,16 +123,22 @@ def slow_frames(start_us, duration_us):
     return frames
 
 
+IDLE = ("MessageQueue.nativePollOnce",)
+
+
 def report(title, spans, name, top):
-    inclusive, exclusive = collections.Counter(), collections.Counter()
+    """Self time names where a thread actually was; each line shows the calls that led there."""
+    exclusive, paths = collections.Counter(), collections.defaultdict(collections.Counter)
     for duration, stack in spans:
-        exclusive[stack[-1]] += duration
-        for mid in set(stack):
-            inclusive[mid] += duration
+        leaf = stack[-1]
+        if name(leaf) in IDLE:
+            continue
+        exclusive[leaf] += duration
+        paths[leaf][" < ".join(name(mid) for mid in reversed(stack[-6:-1]))] += duration
     print(f"\n{title}")
-    print("  self      in-ms   function")
-    for mid, spent in inclusive.most_common(top):
-        print(f"  {exclusive[mid] / 1000:6.1f}  {spent / 1000:8.1f}   {name(mid)}")
+    for mid, spent in exclusive.most_common(top):
+        path, _ = paths[mid].most_common(1)[0]
+        print(f"  {spent / 1000:7.1f} ms  {name(mid)}  <  {path}")
 
 
 def main():
