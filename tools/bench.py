@@ -150,6 +150,7 @@ def main():
     flushed = [e for e in found if any(b <= e["t"] <= e_ + 4_500 for b, e_ in windows)]
     frames = sum(e["count"] for e in flushed if e.get("event") == "frames")
     slow_total = sum(e["slow"] for e in flushed if e.get("event") == "frames")
+    dropped = sum(e.get("dropped", 0) for e in flushed if e.get("event") == "frames")
     slow = [e for e in inside if e.get("event") == "slow-frame"]
     pressed = sum(1 for e in inside if e.get("event") == "key")
     times = sorted(e["ms"] for e in slow)
@@ -163,14 +164,15 @@ def main():
 
     label = args.label or " ".join(filter(None, [args.pattern, args.cold and f"cold={args.cold}", args.flags]))
     lines = [
-        f"{time.strftime('%H:%M:%S')} {label}: ready {opened:.1f} s; {frames} frames, {slow_total} slow "
-        f"({100 * slow_total / max(frames, 1):.1f}%), {over:.0f} ms over budget, keys {pressed}/{steps}",
+        f"{time.strftime('%H:%M:%S')} {label}: ready {opened:.1f} s; {frames} frames, {dropped} dropped "
+        f"({100 * dropped / max(frames + dropped, 1):.1f}%), {slow_total} slow ({100 * slow_total / max(frames, 1):.1f}%), "
+        f"{over:.0f} ms over budget, keys {pressed}/{steps}",
         f"  slow frames p50 {pct(.5):.1f} p90 {pct(.9):.1f} max {pct(1):.1f} ms; "
         f"median anim {median('anim')} draw {median('draw')} sync {median('sync')} cmd {median('cmd')} swap {median('swap')}",
         f"  posters: {stat(flushed, 'poster.wait.ms')}; {stat(flushed, 'poster.network.ms')}; {stat(flushed, 'poster.disk.ms')}",
     ]
     for e in sorted(slow, key=lambda e: -e["ms"])[:3]:
-        parts = " ".join(f"{k} {e[k]}" for k in ("delay", "anim", "layout", "draw", "sync", "cmd", "swap") if e.get(k, 0) >= 3)
+        parts = " ".join(f"{k} {e[k]}" for k in ("delay", "input", "anim", "layout", "draw", "sync", "cmd", "swap") if e.get(k, 0) >= 3)
         lines.append(f"  {e['ms']:6.1f} ms after {e.get('cause') or '?'}: {parts}")
     if switches:
         lines.insert(1, f"  switches: {len(switches)}, ready after median {statistics.median(switches):.0f} ms, max {max(switches)} ms")

@@ -78,8 +78,16 @@ internal object Analytics {
         val budget = (1_000_000_000L / refresh).toLong()
         var frames = 0
         var slow = 0
+        var dropped = 0
+        var lastVsync = 0L
         activity.window.addOnFrameMetricsAvailableListener({ _, metrics, _ ->
             frames++
+            // A frame that starts one or more vsyncs after the previous one, mid-animation, left the
+            // screen showing the same picture: a visible stutter. Longer gaps are idle time.
+            val vsync = metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP)
+            val gap = vsync - lastVsync
+            if (gap > budget * 3 / 2 && gap < budget * 6) dropped += ((gap + budget / 2) / budget - 1).toInt()
+            lastVsync = vsync
             if (metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L) {
                 event("first-frame", "msSinceStart" to SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
             }
@@ -92,6 +100,7 @@ internal object Analytics {
                     "vsyncUs" to metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) / 1000,
                     "cause" to recentCause(),
                     "delay" to metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION).ms(),
+                    "input" to metrics.getMetric(FrameMetrics.INPUT_HANDLING_DURATION).ms(),
                     "anim" to metrics.getMetric(FrameMetrics.ANIMATION_DURATION).ms(),
                     "layout" to metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION).ms(),
                     "draw" to metrics.getMetric(FrameMetrics.DRAW_DURATION).ms(),
@@ -105,9 +114,10 @@ internal object Analytics {
         handler.postDelayed(object : Runnable {
             override fun run() {
                 // Sent even when idle, so the receiver's flags and commands always reach the app.
-                event("frames", "count" to frames, "slow" to slow, "flags" to flagText)
+                event("frames", "count" to frames, "slow" to slow, "dropped" to dropped, "flags" to flagText)
                 frames = 0
                 slow = 0
+                dropped = 0
                 if (++flushes % MEMORY_EVERY == 0) memory()
                 summarizeSamples()
                 flush()
