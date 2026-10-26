@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
         runAction {
             val saved = store.load()
             if (saved == null) {
-                state = PlexBrowserState()
+                linkAccount()
             } else {
                 account = saved
                 navigationSelection = navigationStore.load()
@@ -172,24 +172,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
     private fun linkAccount() {
         runAction {
             state = PlexBrowserState(busy = true)
-            val pin = accountClient.createPin()
-            state = state.copy(pin = pin, busy = false, canGoBack = true)
-            while (System.currentTimeMillis() < pin.expiresAtMs) {
-                delay(1_000)
-                val token = accountClient.pollPin(pin) ?: continue
-                val linked = accountClient.account(token)
-                store.save(linked)
-                navigationStore.clear()
-                navigationSelection = PlexNavigationSelection()
-                account = linked
-                state = state.copy(busy = true, pin = null, canGoBack = false)
-                showServers(restore = true)
-                return@runAction
+            repeat(PIN_GENERATIONS) {
+                val pin = accountClient.createPin()
+                val qr = try {
+                    accountClient.pinQr(pin)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                state = state.copy(pin = pin, pinQr = qr, busy = false)
+                while (System.currentTimeMillis() < pin.expiresAtMs) {
+                    delay(1_000)
+                    val token = accountClient.pollPin(pin) ?: continue
+                    val linked = accountClient.account(token)
+                    store.save(linked)
+                    navigationStore.clear()
+                    navigationSelection = PlexNavigationSelection()
+                    account = linked
+                    state = state.copy(busy = true, pin = null, pinQr = null)
+                    showServers(restore = true)
+                    return@runAction
+                }
             }
-            state = state.copy(error = "This code has expired. Get a new code to continue.")
+            state = state.copy(pin = null, pinQr = null, error = "The sign-in code expired. Choose New code to try again.")
         }
     }
 
@@ -347,10 +357,7 @@ class MainActivity : ComponentActivity() {
     private fun navigateBack() {
         if (PlaybackMonitor.state.value.running) return
         when (state.stage) {
-            BrowserStage.SIGN_IN -> {
-                cancelAction()
-                state = PlexBrowserState()
-            }
+            BrowserStage.SIGN_IN -> finish()
             BrowserStage.SERVERS -> {
                 if (activeLibrary != null) { cancelAction(); resumeCollection() }
                 else if (connection != null) { cancelAction(); state = state.copy(busy = false); showSources() }
@@ -400,7 +407,7 @@ class MainActivity : ComponentActivity() {
             state = PlexBrowserState(busy = true)
             store.clear()
             navigationStore.clear()
-            state = PlexBrowserState()
+            linkAccount()
         }
     }
 
@@ -492,5 +499,9 @@ class MainActivity : ComponentActivity() {
                 if (version == actionVersion) state = state.copy(busy = false)
             }
         }
+    }
+
+    private companion object {
+        const val PIN_GENERATIONS = 4
     }
 }

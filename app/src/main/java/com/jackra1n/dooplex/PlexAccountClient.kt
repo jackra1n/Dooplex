@@ -1,5 +1,7 @@
 package com.jackra1n.dooplex
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -33,8 +35,16 @@ class PlexAccountClient(private val clientId: String) {
             } catch (_: Exception) {
                 throw IOException("Plex returned an invalid link expiry.")
             }
-            PlexPin(id, code, expires)
+            val qr = value.optString("qr").takeIf(::plexHosted) ?: "https://plex.tv/api/v2/pins/qr/${encode(code)}"
+            PlexPin(id, code, expires, qr)
         }
+    }
+
+    /** The same public QR image the official Plex apps show for a link PIN. */
+    suspend fun pinQr(pin: PlexPin): Bitmap = withContext(Dispatchers.IO) {
+        require(plexHosted(pin.qrUrl)) { "A plex.tv QR address is required." }
+        val image = fetch(pin.qrUrl, accept = "image/png", accountRequest = false)
+        BitmapFactory.decodeByteArray(image, 0, image.size) ?: throw IOException("Plex returned an unreadable QR code.")
     }
 
     suspend fun pollPin(pin: PlexPin): String? = withContext(Dispatchers.IO) {
@@ -114,7 +124,17 @@ class PlexAccountClient(private val clientId: String) {
         body: String? = null,
         accountRequest: Boolean = true,
         pinPoll: Boolean = false,
-    ): String {
+    ): String = String(fetch(url, token, method, body, accountRequest, pinPoll), Charsets.UTF_8)
+
+    private suspend fun fetch(
+        url: String,
+        token: String? = null,
+        method: String = "GET",
+        body: String? = null,
+        accountRequest: Boolean = true,
+        pinPoll: Boolean = false,
+        accept: String = "application/json",
+    ): ByteArray {
         currentCoroutineContext().ensureActive()
         var http: HttpURLConnection? = null
         try {
@@ -125,7 +145,7 @@ class PlexAccountClient(private val clientId: String) {
             client.connectTimeout = 8_000
             client.readTimeout = 8_000
             client.useCaches = false
-            client.setRequestProperty("Accept", "application/json")
+            client.setRequestProperty("Accept", accept)
             client.setRequestProperty("X-Plex-Client-Identifier", clientId)
             client.setRequestProperty("X-Plex-Product", "Dooplex")
             client.setRequestProperty("X-Plex-Version", "1.0")
@@ -160,7 +180,7 @@ class PlexAccountClient(private val clientId: String) {
                 }
             }
             currentCoroutineContext().ensureActive()
-            return output.toString(Charsets.UTF_8.name())
+            return output.toByteArray()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: PlexAuthenticationException) {
@@ -187,6 +207,12 @@ class PlexAccountClient(private val clientId: String) {
             uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null ||
             uri.port != -1 && uri.port !in 1..65535 || uri.rawPath.orEmpty() !in setOf("", "/")) return null
         return uri.toASCIIString().trimEnd('/')
+    }
+
+    private fun plexHosted(value: String): Boolean {
+        val uri = try { URI(value) } catch (_: Exception) { return false }
+        val host = uri.host?.lowercase() ?: return false
+        return uri.scheme == "https" && uri.rawUserInfo == null && (host == "plex.tv" || host.endsWith(".plex.tv"))
     }
 
     private fun JSONObject.truth(name: String): Boolean = opt(name)?.toString().let {

@@ -1,8 +1,9 @@
 package com.jackra1n.dooplex
 
+import android.graphics.Bitmap
 import java.io.IOException
 
-data class PlexPin(val id: String, val code: String, val expiresAtMs: Long)
+data class PlexPin(val id: String, val code: String, val expiresAtMs: Long, val qrUrl: String)
 data class PlexAccount(val token: String, val displayName: String)
 data class PlexServerEndpoint(val uri: String, val local: Boolean, val relay: Boolean)
 data class PlexServer(
@@ -69,6 +70,7 @@ data class PlexBrowserState(
     val heading: String = "Connect your Plex account",
     val accountName: String = "",
     val pin: PlexPin? = null,
+    val pinQr: Bitmap? = null,
     val servers: List<PlexServer> = emptyList(),
     val libraries: List<PlexLibrary> = emptyList(),
     val busy: Boolean = false,
