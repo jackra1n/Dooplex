@@ -80,18 +80,22 @@ internal object Analytics {
         var slow = 0
         var dropped = 0
         var lastVsync = 0L
+        var lastTotal = 0L
         activity.window.addOnFrameMetricsAvailableListener({ _, metrics, _ ->
             frames++
-            // A frame that starts one or more vsyncs after the previous one, mid-animation, left the
-            // screen showing the same picture: a visible stutter. Longer gaps are idle time.
+            // A frame that lands vsyncs after the previous one left the same picture on screen: a
+            // visible stutter, when the previous frame ran long or the main thread was busy. Otherwise
+            // the gap is idle time between animations.
             val vsync = metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP)
+            val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
             val gap = vsync - lastVsync
-            if (gap > budget * 3 / 2 && gap < budget * 6) dropped += ((gap + budget / 2) / budget - 1).toInt()
+            val busy = lastTotal > budget || metrics.getMetric(FrameMetrics.UNKNOWN_DELAY_DURATION) > budget / 2
+            if (busy && gap > budget * 3 / 2 && gap < budget * 30) dropped += ((gap + budget / 2) / budget - 1).toInt()
             lastVsync = vsync
+            lastTotal = total
             if (metrics.getMetric(FrameMetrics.FIRST_DRAW_FRAME) == 1L) {
                 event("first-frame", "msSinceStart" to SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
             }
-            val total = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
             if (total > budget * 3 / 2) {
                 slow++
                 event(
