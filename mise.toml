@@ -24,20 +24,18 @@ set -euo pipefail
 target="${ZIDOO_URL:-http://<zidoo-ip>:18888}"
 response=$(mktemp)
 trap 'rm -f "$response"' EXIT
-# Match Web Install's Huploadify request; HTTP acceptance is not an installation receipt.
-if ! status=$(curl --silent --show-error --fail-with-body \
+# Web Install installs the APK and then fails in its own multipart parser, so browsers get this 400 too.
+status=$(curl --silent --show-error \
   --connect-timeout 10 --max-time 180 \
+  --header 'Expect:' \
   --header 'X-Requested-With: XMLHttpRequest' \
   --form 'file=@app/build/outputs/apk/release/dooplex-movies.apk;type=application/vnd.android.package-archive' \
   --output "$response" --write-out '%{http_code}' \
-  "${target%/}/?fallback=1"); then
+  "${target%/}/?fallback=1")
+if [[ "$status" != 200 ]] && ! grep -q 'next chunk does not start with boundary' "$response"; then
   cat "$response"
+  printf '\nUpload rejected (HTTP %s).\n' "$status" >&2
   exit 1
 fi
-cat "$response"
-if [[ "$status" != 200 ]]; then
-  printf '\nUpload rejected: expected HTTP 200, received %s.\n' "$status" >&2
-  exit 1
-fi
-printf '\nAPK upload accepted. Check the Zidoo for the installation result.\n'
+printf 'APK delivered to the Zidoo; it installs in the background.\n'
 '''
