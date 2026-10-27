@@ -3,7 +3,6 @@ package com.jackra1n.dooplex
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -11,8 +10,7 @@ import com.jackra1n.dooplex.details.MediaInfoState
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.home.HomeState
 import com.jackra1n.dooplex.library.CollectionLibraryState
-import com.jackra1n.dooplex.library.ShowBrowseLevel
-import com.jackra1n.dooplex.library.ShowBrowseState
+import com.jackra1n.dooplex.library.ShowPageState
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexClient
 import com.jackra1n.dooplex.plex.PlexConnection
@@ -62,7 +60,8 @@ internal class Browser(
         private set
     var shows by mutableStateOf(collection("show"))
         private set
-    val showHistory = mutableStateListOf<ShowBrowseState>()
+    var showPage by mutableStateOf<ShowPageState?>(null)
+        private set
     var search by mutableStateOf<SearchState?>(null)
         private set
     var menu by mutableStateOf<PlexBrowseItem?>(null)
@@ -71,16 +70,15 @@ internal class Browser(
         private set
     var message by mutableStateOf<String?>(null)
     private var homeOrigin = false
-    private var selectedShowKey: String? = null
     private var pendingMovie: String? = null
-    private var pendingShow: ShowBrowseState? = null
+    private var pendingShow: ShowPageState? = null
 
     init {
         watchlist.refresh()
     }
 
-    /** The open season or episode list, when the TV Shows tab shows one. */
-    val child: ShowBrowseState? get() = showHistory.lastOrNull().takeIf { tab == "show" }
+    /** The open show, when the TV Shows tab shows one. */
+    val page: ShowPageState? get() = showPage.takeIf { tab == "show" }
 
     /** The remembered library of a type, or the server's first one; the library page can switch it. */
     fun libraryOf(type: String): PlexLibrary? =
@@ -115,60 +113,45 @@ internal class Browser(
 
     fun selectHeaderLibrary(library: PlexLibrary) {
         if (blocked()) return
-        val child = showHistory.lastOrNull().takeIf { tab == "show" && shows?.library?.key == library.key }
-        focus.enterHeader(child?.let { "show:${it.path}" } ?: "library:${library.key}")
+        focus.enterHeader("library:${library.key}")
         selectLibrary(library)
     }
 
-    /** Shows and seasons open in their own TV library; Back from that stack returns to Home. */
+    /** A show, season or episode opens its show's page in the TV library; Back returns to Home. */
     fun openFromHome(item: PlexBrowseItem) {
         if (blocked()) return
-        val path = item.childrenPath ?: return
+        val target = if (item.type == "show") item
+            else PlexBrowseItem(ratingKey = item.showKey ?: return, title = item.showTitle, subtitle = "", type = "show")
+        val season = when (item.type) {
+            "season" -> item.index
+            "episode" -> item.parentIndex
+            else -> null
+        }
         val library = libraries.firstOrNull { it.type == "show" && it.key == item.libraryKey } ?: libraryOf("show") ?: return
         dip.change {
             if (shows?.library?.key != library.key) {
                 closeShows()
                 shows = CollectionLibraryState(library, connection, scope)
             }
-            clearShowHistory()
-            if (item.type == "show") selectedShowKey = item.ratingKey
-            val level = if (item.type == "season") ShowBrowseLevel.EPISODES else ShowBrowseLevel.SEASONS
-            showHistory += ShowBrowseState(path, item.title, level, connection, scope)
+            openShowPage(target, season)
             homeOrigin = true
             show("show")
         }
     }
 
-    /** A shared root card opens the child-only stack; it never opens movie details. */
     fun openShow(item: PlexBrowseItem) {
         if (blocked() || tab != "show") return
-        val path = item.childrenPath ?: return
-        dip.change {
-            clearShowHistory()
-            selectedShowKey = item.ratingKey
-            showHistory += ShowBrowseState(path, item.title, ShowBrowseLevel.SEASONS, connection, scope)
-        }
+        dip.change { openShowPage(item, null) }
     }
 
-    /** The show library's grid is the root, so only a season list opens another level. */
-    fun openSeason(item: PlexBrowseItem) {
-        if (blocked() || showHistory.lastOrNull()?.level != ShowBrowseLevel.SEASONS) return
-        val path = item.childrenPath ?: return
-        dip.change { showHistory += ShowBrowseState(path, item.title, ShowBrowseLevel.EPISODES, connection, scope) }
-    }
-
-    /** Back inside a show steps up one level; anywhere else it returns to Home. */
+    /** Back from a show returns to where it was opened from; anywhere else it returns to Home. */
     fun back() {
         if (blocked()) return
-        if (tab != "show" || showHistory.isEmpty()) return goHome()
+        val page = showPage
+        if (tab != "show" || page == null) return goHome()
         dip.change {
-            showHistory.removeLastOrNull()?.close()
-            val parent = showHistory.lastOrNull()
-            when {
-                parent != null -> parent.refresh()
-                homeOrigin -> openHome()
-                else -> selectedShowKey?.let { shows?.refreshItem(it) }
-            }
+            closeShowPage()
+            if (homeOrigin) openHome() else shows?.refreshItem(page.show.ratingKey)
         }
     }
 
@@ -212,20 +195,20 @@ internal class Browser(
     }
 
     fun retry() {
-        if (tab == "movie") movies?.retry() else showHistory.lastOrNull()?.retry() ?: shows?.retry()
+        if (tab == "movie") movies?.retry() else shows?.retry()
     }
 
     /** Remembers what to refresh once the player closes. */
     fun played(item: PlexBrowseItem) {
         pendingMovie = item.ratingKey.takeIf { tab == "movie" }
-        pendingShow = showHistory.lastOrNull().takeIf { tab == "show" }
+        pendingShow = page
     }
 
     fun refreshAfterPlayback() {
         pendingMovie?.let { movies?.refreshItem(it) }
-        pendingShow?.let { show ->
-            if (show in showHistory) show.refresh()
-            selectedShowKey?.let { shows?.refreshItem(it) }
+        pendingShow?.let { page ->
+            if (page == showPage) page.refresh()
+            shows?.refreshItem(page.show.ratingKey)
         }
         pendingMovie = null
         pendingShow = null
@@ -261,8 +244,10 @@ internal class Browser(
         home.refresh()
         movies?.refreshItem(item.ratingKey)
         shows?.refreshItem(item.ratingKey)
-        selectedShowKey?.let { shows?.refreshItem(it) }
-        showHistory.lastOrNull()?.refresh()
+        showPage?.let { page ->
+            page.refresh()
+            shows?.refreshItem(page.show.ratingKey)
+        }
         search?.let { it.type(it.query) }
         if (tab == "watchlist") watchlist.refresh()
     }
@@ -319,9 +304,15 @@ internal class Browser(
     private fun collection(type: String): CollectionLibraryState? =
         libraryOf(type)?.let { CollectionLibraryState(it, connection, scope) }
 
-    private fun clearShowHistory() {
-        showHistory.forEach { it.close() }
-        showHistory.clear()
+    private fun openShowPage(item: PlexBrowseItem, season: Int?) {
+        closeShowPage()
+        showPage = ShowPageState(item, connection, scope, season)
+        homeOrigin = false
+    }
+
+    private fun closeShowPage() {
+        showPage?.close()
+        showPage = null
     }
 
     private fun closeMovies() {
@@ -333,8 +324,7 @@ internal class Browser(
     private fun closeShows() {
         shows?.close()
         shows = null
-        selectedShowKey = null
-        clearShowHistory()
+        closeShowPage()
         pendingShow = null
     }
 

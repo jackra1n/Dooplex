@@ -74,6 +74,7 @@ import com.jackra1n.dooplex.ui.DooplexIcons
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import com.jackra1n.dooplex.watchlist.LocalWatchlist
+import com.jackra1n.dooplex.watchlist.WatchlistState
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -98,8 +99,11 @@ internal fun MovieDetailsScreen(
     onRetry: () -> Unit,
     onPlay: (Boolean) -> Unit,
     playable: Boolean = true,
+    onShow: (() -> Unit)? = null,
 ) {
-    val watchlist = LocalWatchlist.current?.takeIf { movie.guid.startsWith("plex://") }
+    val watchlist = LocalWatchlist.current?.takeIf { movie.guid.startsWith("plex://") && movie.type == "movie" }
+    val showFocus = remember(movie.ratingKey) { FocusRequester() }
+    val afterWatchlist = if (onShow != null) showFocus else FocusRequester.Cancel
     val watchFocus = remember(movie.ratingKey) { FocusRequester() }
     val playFocus = remember(movie.ratingKey) { FocusRequester() }
     val startFocus = remember(movie.ratingKey) { FocusRequester() }
@@ -118,7 +122,7 @@ internal fun MovieDetailsScreen(
     val primaryFocus = if (playable) playFocus else if (watchlist != null) watchFocus else moreFocus
     val metadata = remember(movie) {
         listOfNotNull(
-            movie.subtitle.takeIf { it.isNotBlank() },
+            movie.subtitle.takeIf { it.isNotBlank() && movie.type != "episode" },
             movie.durationMs.takeIf { it > 0 }?.let(::detailRuntime),
             movie.contentRating.takeIf { it.isNotBlank() },
             "Watched".takeIf { movie.watched },
@@ -274,7 +278,7 @@ internal fun MovieDetailsScreen(
                                         up = backFocus
                                         down = moreFocus
                                         left = FocusRequester.Cancel
-                                        right = if (resume) startFocus else if (watchlist != null) watchFocus else FocusRequester.Cancel
+                                        right = if (resume) startFocus else if (watchlist != null) watchFocus else afterWatchlist
                                     },
                             ) {
                                 DetailPlayIcon(compact)
@@ -291,28 +295,36 @@ internal fun MovieDetailsScreen(
                                         up = backFocus
                                         down = if (error != null) retryFocus else moreFocus
                                         left = playFocus
-                                        right = if (watchlist != null) watchFocus else FocusRequester.Cancel
+                                        right = if (watchlist != null) watchFocus else afterWatchlist
                                     },
                             ) { DetailActionText("Start over", compact) }
-                            val watchlisted = watchlist?.contains(movie.guid) == true
-                            if (watchlist != null) CinemaButton(
-                                onClick = { watchlist.toggle(movie) }, enabled = enabled, primary = watchlisted,
-                                padding = PaddingValues(11.dp),
-                                modifier = Modifier.focusRequester(watchFocus)
+                            if (watchlist != null) WatchlistButton(
+                                movie, watchlist, enabled,
+                                Modifier.focusRequester(watchFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Watchlist }
                                     .focusProperties {
                                         up = backFocus
                                         down = moreFocus
                                         left = if (resume) startFocus else if (playable) playFocus else FocusRequester.Cancel
+                                        right = afterWatchlist
+                                    },
+                            )
+                            if (onShow != null) CinemaButton(
+                                onClick = onShow, enabled = enabled,
+                                modifier = Modifier.focusRequester(showFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Show }
+                                    .focusProperties {
+                                        up = backFocus
+                                        down = moreFocus
+                                        left = when {
+                                            watchlist != null -> watchFocus
+                                            resume -> startFocus
+                                            playable -> playFocus
+                                            else -> FocusRequester.Cancel
+                                        }
                                         right = FocusRequester.Cancel
                                     },
-                            ) {
-                                Icon(
-                                    if (watchlisted) DooplexIcons.BookmarkFilled else DooplexIcons.Bookmark,
-                                    contentDescription = if (watchlisted) "On watchlist" else "Add to watchlist",
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
+                            ) { DetailActionText("Go to show", compact) }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
                             DetailReadingLink(
@@ -485,10 +497,10 @@ internal fun MovieDetailsScreen(
     }
 }
 
-private enum class DetailFocus { Back, More, Reader, ReaderBack, Play, StartOver, Retry, Watchlist }
+private enum class DetailFocus { Back, More, Reader, ReaderBack, Play, StartOver, Retry, Watchlist, Show }
 
 @Composable
-private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, active: Boolean) {
+internal fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, active: Boolean) {
     val painter = rememberMovieArtworkPainter(path, posters, width = 1280, height = 720, active = active)
     val opacity = animateFloatAsState(
         targetValue = if (painter != null) 1f else 0f,
@@ -515,25 +527,30 @@ private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, activ
     )))
 }
 
-/** Title art is fitted, never cropped; the real title remains readable until artwork is available. */
+/**
+ * Title art is fitted, never cropped; the real title remains readable until artwork is available.
+ * An episode shows its show's logo or name, then its number and title.
+ */
 @Composable
-private fun DetailTitle(
+internal fun DetailTitle(
     movie: PlexBrowseItem,
     posters: PosterRepository,
     active: Boolean,
     compact: Boolean,
     height: androidx.compose.ui.unit.Dp,
 ) {
+    val episode = movie.type == "episode"
     val logo = rememberMovieArtworkPainter(movie.logoPath, posters, width = 800, height = 310, active = active)
+    val title = if (episode) movie.showTitle.ifBlank { movie.title } else movie.title
     Box(Modifier.fillMaxWidth().height(height), contentAlignment = Alignment.CenterStart) {
         if (logo != null) Image(
             painter = logo,
-            contentDescription = movie.title,
+            contentDescription = title,
             contentScale = ContentScale.Fit,
             alignment = Alignment.CenterStart,
             modifier = Modifier.fillMaxSize(),
         ) else Text(
-            movie.title,
+            title,
             color = CinemaColors.Foreground,
             fontSize = if (compact) 18.sp else 30.sp,
             lineHeight = if (compact) 20.sp else 32.sp,
@@ -542,7 +559,34 @@ private fun DetailTitle(
             overflow = TextOverflow.Ellipsis,
         )
     }
+    if (episode) Text(
+        "${episodeNumber(movie)}  ·  ${movie.title}",
+        color = CinemaColors.Foreground,
+        fontSize = if (compact) 15.sp else 22.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
+
+/** A bookmark: outlined when the title isn't on the watchlist, filled on the light face when it is. */
+@Composable
+internal fun WatchlistButton(item: PlexBrowseItem, watchlist: WatchlistState, enabled: Boolean, modifier: Modifier = Modifier) {
+    val watchlisted = watchlist.contains(item.guid)
+    CinemaButton(
+        onClick = { watchlist.toggle(item) }, enabled = enabled, primary = watchlisted,
+        padding = PaddingValues(11.dp), modifier = modifier,
+    ) {
+        Icon(
+            if (watchlisted) DooplexIcons.BookmarkFilled else DooplexIcons.Bookmark,
+            contentDescription = if (watchlisted) "On watchlist" else "Add to watchlist",
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+internal fun episodeNumber(episode: PlexBrowseItem): String =
+    if (episode.parentIndex == 0) "Special ${episode.index}" else "S${episode.parentIndex} · E${episode.index}"
 
 @Composable
 private fun DetailHeroCredits(movie: PlexBrowseItem, compact: Boolean, modifier: Modifier) {

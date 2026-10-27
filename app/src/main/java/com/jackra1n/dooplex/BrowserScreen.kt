@@ -10,7 +10,7 @@ import com.jackra1n.dooplex.details.MediaInfoDialog
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.home.HomeScreen
 import com.jackra1n.dooplex.library.CollectionScreen
-import com.jackra1n.dooplex.library.ShowsScreen
+import com.jackra1n.dooplex.library.ShowPage
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.search.SearchScreen
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
@@ -43,15 +43,15 @@ internal fun BrowserScreen(
         "show" -> browser.shows
         else -> null
     }
-    val child = browser.child.takeIf { collection != null }
+    val page = browser.page.takeIf { collection != null }
     val route = when {
-        child != null -> "show:${child.path}"
+        page != null -> "show:${page.show.ratingKey}"
         collection != null -> "library:${collection.library.key}"
         else -> tab
     }
     val screen = when {
         tab == "home" -> if (browser.home.selectedMovie != null) "home/details" else "home"
-        child != null -> "show/${child.level.name.lowercase()}"
+        page != null -> if (page.details.movie != null) "show/episode" else "show/page"
         collection != null -> "library/$tab" + if (collection.selectedMovie != null) "/details" else ""
         else -> tab
     }
@@ -112,17 +112,8 @@ internal fun BrowserScreen(
                     )
                 }
             }
-            child != null -> destinations.SaveableStateProvider("$serverId:show:${child.path}") {
-                ShowsScreen(
-                    state = child,
-                    posters = browser.posters,
-                    enabled = !blocked,
-                    error = error,
-                    onBack = browser::back,
-                    onItem = { if (it.childrenPath == null) onPlay(it, false) else browser.openSeason(it) },
-                    navigation = navigation,
-                    focus = focus,
-                )
+            page != null -> key(page) {
+                ShowPage(state = page, posters = browser.posters, enabled = !blocked, onBack = browser::back, onPlay = onPlay)
             }
             collection != null -> key(collection) {
                 destinations.SaveableStateProvider("$serverId:$tab:${collection.library.key}") {

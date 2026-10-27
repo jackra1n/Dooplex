@@ -131,8 +131,7 @@ internal fun HomeScreen(
 
     fun open(item: PlexBrowseItem) {
         when (item.type) {
-            "movie" -> state.selectMovie(item)
-            "episode" -> onPlay(item, false)
+            "movie", "episode" -> state.selectMovie(item)
             else -> onOpen(item)
         }
     }
@@ -329,6 +328,11 @@ internal fun HomeScreen(
             onPlay = { fromBeginning ->
                 state.closeDetails()
                 onPlay(selected, fromBeginning)
+            },
+            onShow = if (selected.type != "episode") null else { ->
+                state.closeDetails()
+                content.requestFocus()
+                onOpen(selected)
             },
         )
     }

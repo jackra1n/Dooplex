@@ -103,8 +103,7 @@ internal fun SearchScreen(
     BackHandler(enabled = enabled && selected == null, onBack = onBack)
 
     fun open(item: PlexBrowseItem) = when (item.type) {
-        "movie" -> state.details.open(item)
-        "episode" -> onPlay(item, false)
+        "movie", "episode" -> state.details.open(item)
         else -> onOpen(item)
     }
 
@@ -194,6 +193,10 @@ internal fun SearchScreen(
         onPlay = { fromBeginning ->
             closeDetails()
             onPlay(selected, fromBeginning)
+        },
+        onShow = if (selected.type != "episode") null else { ->
+            closeDetails()
+            onOpen(selected)
         },
     )
 }
