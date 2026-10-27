@@ -38,6 +38,7 @@ internal fun CinemaButton(
     enabled: Boolean = true,
     selected: Boolean = false,
     primary: Boolean = false,
+    padding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 11.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -83,7 +84,7 @@ internal fun CinemaButton(
                     onClick = onClick,
                 )
                 .defaultMinSize(minHeight = 46.dp)
-                .padding(PaddingValues(horizontal = 20.dp, vertical = 11.dp)),
+                .padding(padding),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,

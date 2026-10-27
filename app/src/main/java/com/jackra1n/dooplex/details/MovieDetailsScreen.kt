@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalContentColor
 import com.jackra1n.dooplex.R
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -68,6 +70,7 @@ import com.jackra1n.dooplex.artwork.rememberMovieArtworkPainter
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexMediaRating
 import com.jackra1n.dooplex.ui.CinemaButton
+import com.jackra1n.dooplex.ui.DooplexIcons
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import com.jackra1n.dooplex.watchlist.LocalWatchlist
@@ -291,8 +294,10 @@ internal fun MovieDetailsScreen(
                                         right = if (watchlist != null) watchFocus else FocusRequester.Cancel
                                     },
                             ) { DetailActionText("Start over", compact) }
+                            val watchlisted = watchlist?.contains(movie.guid) == true
                             if (watchlist != null) CinemaButton(
-                                onClick = { watchlist.toggle(movie) }, enabled = enabled, primary = !playable,
+                                onClick = { watchlist.toggle(movie) }, enabled = enabled, primary = watchlisted,
+                                padding = PaddingValues(11.dp),
                                 modifier = Modifier.focusRequester(watchFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Watchlist }
                                     .focusProperties {
@@ -302,7 +307,11 @@ internal fun MovieDetailsScreen(
                                         right = FocusRequester.Cancel
                                     },
                             ) {
-                                DetailActionText(if (watchlist.contains(movie.guid)) "✓  On watchlist" else "+  Watchlist", compact)
+                                Icon(
+                                    if (watchlisted) DooplexIcons.BookmarkFilled else DooplexIcons.Bookmark,
+                                    contentDescription = if (watchlisted) "On watchlist" else "Add to watchlist",
+                                    modifier = Modifier.size(24.dp),
+                                )
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
