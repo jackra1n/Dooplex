@@ -43,7 +43,14 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
   with `GET /library/all?type=1|2&guid=<ids>`, at most 40 ids per request, each id encoded on its
   own and joined with a literal comma (`%2C` or repeating `guid=` does not work). Ids the server
   lacks are simply absent.
-- Only matched titles are shown, since only they can play; the rest are counted under the title.
+- Every entry is shown in watchlist order. Titles the server lacks use Discover's own data (title,
+  year, summary, poster) and open details without Play. Their posters are on
+  `metadata-static.plex.tv` and, like hosted logos, are fetched through the server's image proxy.
+- Adding and removing: `PUT https://discover.provider.plex.tv/actions/addToWatchlist?ratingKey=<id>`
+  (or `removeFromWatchlist`), where `<id>` is the last part of the title's `plex://` id. A title
+  matched by an old agent has no `plex://` id, so its details page shows no watchlist button.
+- The watchlist loads when a server connects, so every details page knows whether its title is on
+  it (`LocalWatchlist`).
 
 ## Libraries and artwork
 

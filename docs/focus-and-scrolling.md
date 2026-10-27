@@ -45,6 +45,17 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   October 2026: switching Movies to TV Shows restored the old position before layout and scrolled
   the header with the top bar out of view.
 
+## Focus must never be dropped
+
+When the focused element disappears or becomes unfocusable, Android hands focus to the first
+focusable element, the Home tab, which also marks the top bar as being navigated; the page then pulls
+focus back there. So:
+
+- **Disabled cards stay focusable** and ignore presses (`CollectionPosterCard`, `EpisodeCard`).
+  Opening details disables the cards underneath, which used to drop the clicked card's focus.
+- **Closing details moves focus first:** the poster (or its grid, with `focusRestorer`) takes focus
+  while details still covers it, then details closes.
+
 ## Back
 
 Back behaves like other TV apps (decision 2026-10-27):
