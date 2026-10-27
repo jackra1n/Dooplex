@@ -15,3 +15,7 @@ mise run upload   # build and install on a Zidoo (set ZIDOO_URL to yours)
 
 Thanks to [plx-native](https://github.com/GLinnik21/plx-native) for the inspiration and its amazing
 work.
+
+## License
+
+[GPL-3.0](LICENSE)
