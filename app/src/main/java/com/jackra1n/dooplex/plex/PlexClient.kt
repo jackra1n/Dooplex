@@ -9,6 +9,7 @@ import java.net.URISyntaxException
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -315,8 +316,9 @@ class PlexClient(private val connection: PlexConnection) {
      * `excludeContinueWatching`. Hub items arrive embedded.
      */
     suspend fun homeRows(): List<PlexHomeRow> = withContext(Dispatchers.IO) {
-        hubRows("/hubs/continueWatching", mapOf("count" to HOME_ROW_ITEMS), "continue watching") +
-            hubRows("/hubs", mapOf("count" to HOME_ROW_ITEMS, "excludeContinueWatching" to "1"), "home")
+        val continueWatching = async { hubRows("/hubs/continueWatching", mapOf("count" to HOME_ROW_ITEMS), "continue watching") }
+        val others = hubRows("/hubs", mapOf("count" to HOME_ROW_ITEMS, "excludeContinueWatching" to "1"), "home")
+        continueWatching.await() + others
     }
 
     /**
