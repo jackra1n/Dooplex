@@ -21,9 +21,8 @@ and press a key if the box was idle ([zidoo-box.md](zidoo-box.md)).
 ## Reporting is opt-in at build time
 
 `DOOPLEX_CRASH_URL` and `DOOPLEX_ANALYTICS_URL` become `BuildConfig` fields; empty means off, and
-both are empty unless the build environment sets them. Only `mise run upload` sets them. **Decision
-(2026-10):** Dooplex will be open source, so nobody who builds or installs it may send reports
-without having chosen to. Keep it that way: never give these a default.
+both are empty unless the build environment sets them. Only `mise run upload` sets them. Never give
+these a default.
 
 ## Crash reports
 
