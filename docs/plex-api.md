@@ -69,6 +69,8 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
   sections (`PlexMediaInfo`).
 - Mark as watched or unwatched is `GET /:/scrobble` or `/:/unscrobble` with
   `identifier=com.plexapp.plugins.library&key=<id>`; on a season or show it covers every episode.
+- Remove from Continue Watching is `PUT /actions/removeFromContinueWatching?ratingKey=<id>`. The
+  title returns once it is played again. Dooplex gives that row the fixed key `continueWatching`.
 
 ## Libraries and artwork
 

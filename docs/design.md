@@ -78,8 +78,10 @@ current server's name), a divider, then **Sign out**, which asks once more becau
 means scanning the sign-in code. Rows light up like the focused tab (`Glass.Light` with dark ink).
 
 Holding OK on a poster or episode, or pressing the remote's Menu key, opens the title's menu
-(`ItemMenu.kt`), centred on screen: **Media info** for movies and episodes, **Mark as watched** or
-**unwatched**, and **Add to** or **Remove from watchlist** for movies and shows. Menus ignore the
+(`ItemMenu.kt`) beside the card, on its right unless there is no room: **Media info** for movies
+and episodes, **Mark as watched** or **unwatched**, **Remove from Continue Watching** on that Home
+shelf, and **Add to** or **Remove from watchlist** for movies and shows. A card that leaves Continue
+Watching first hands focus to its neighbour. Menus ignore the
 held OK that opened them, so letting go never chooses a row. Media info is a scrolling glass panel
 (`MediaInfo.kt`); Up and Down scroll it and Back closes it.
 
@@ -95,7 +97,7 @@ header instead.
 | Home shelves, sideways | Compose's default bring-into-view motion |
 | Tab capsule | Spring, damping 1: stiffness 240 to move, 300 to fade |
 | Buttons | Spring, damping 1, stiffness 320; focused buttons grow to 1.07× with a 10 dp shadow |
-| Poster cards | Grow to 1.035× in 160 ms; a soft top highlight and lit rim fade in over 140 ms |
+| Poster cards | Grow to 1.08× (episodes 1.05×) in 180 ms; a 2 dp rim lit from above, a soft inner glow and a top-left gloss fade in over 140 ms (`focusLight`); other titles dim to 70% |
 | New artwork | Fades in over 220 ms; artwork already in memory appears at once |
 | Page changes | Page dips out in 70 ms, changes while hidden, fades in over 140 ms once drawn; the top bar stays (`PageDip`) |
 
