@@ -153,8 +153,8 @@ internal fun HomeScreen(
         Analytics.mark("hero:swap")
         shown = details
     }
-    LaunchedEffect(heroIndex, heroes.size, enabled) {
-        if (!enabled || heroes.size < 2) return@LaunchedEffect
+    LaunchedEffect(heroIndex, heroes.size, enabled, selected == null) {
+        if (!enabled || selected != null || heroes.size < 2) return@LaunchedEffect
         heroes.getOrNull((heroIndex + 1).mod(heroes.size))?.let { state.heroDetails(it) }
         delay(HERO_SECONDS * 1000)
         if (listState.firstVisibleItemIndex == 0) page(1)
