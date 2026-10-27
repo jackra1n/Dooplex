@@ -22,14 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -60,7 +53,7 @@ internal fun CollectionPosterCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
-    val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "poster focus")
+    val scale = animateFloatAsState(if (focused) FOCUS_SCALE else 1f, tween(180), label = "poster focus")
     val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "poster highlight")
     Column(
         modifier.onFocusChanged {
@@ -76,32 +69,7 @@ internal fun CollectionPosterCard(
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
             .background(CinemaColors.Panel)
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
-            .drawWithCache {
-                val highlight = Brush.radialGradient(
-                    colors = listOf(CinemaColors.Foreground.copy(alpha = 0.08f), Color.Transparent),
-                    center = Offset(size.width * 0.5f, 0f), radius = size.height.coerceAtLeast(1f),
-                )
-                val shine = Brush.linearGradient(
-                    0f to CinemaColors.Foreground.copy(alpha = 0.72f),
-                    0.22f to CinemaColors.Foreground.copy(alpha = 0.28f),
-                    0.58f to CinemaColors.Foreground.copy(alpha = 0.07f),
-                    1f to CinemaColors.Foreground.copy(alpha = 0.20f),
-                    start = Offset.Zero, end = Offset(size.width, size.height),
-                )
-                val edge = Stroke(1.dp.toPx())
-                val halo = Stroke(3.dp.toPx())
-                val inset = edge.width / 2
-                val outlineSize = Size((size.width - edge.width).coerceAtLeast(0f), (size.height - edge.width).coerceAtLeast(0f))
-                val corner = CornerRadius((9.dp.toPx() - inset).coerceAtLeast(0f))
-                onDrawWithContent {
-                    drawContent()
-                    if (light.value > 0f) {
-                        drawRect(highlight, alpha = light.value)
-                        drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value * 0.14f, style = halo)
-                        drawRoundRect(shine, Offset(inset, inset), outlineSize, corner, alpha = light.value, style = edge)
-                    }
-                }
-            }) {
+            .focusLight(light, 9.dp)) {
             PosterArtwork(item?.thumbPath, posters, artworkWidth, loadArtwork,
                 Modifier.fillMaxSize(), item?.title ?: placeholderLabel, metadataLoading = item == null)
             if (item?.watched == true) {
@@ -117,9 +85,12 @@ internal fun CollectionPosterCard(
                 }
             }
         }
-        Text(item?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.85f),
+        Text(item?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.7f),
             fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+/** plx-native pops a focused poster to 1.09; ours stays a touch smaller so neighbours never touch. */
+private const val FOCUS_SCALE = 1.08f

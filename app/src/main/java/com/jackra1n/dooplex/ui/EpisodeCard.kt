@@ -22,13 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,7 +52,7 @@ internal fun EpisodeCard(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
-    val scale = animateFloatAsState(if (focused) 1.035f else 1f, tween(160), label = "episode focus")
+    val scale = animateFloatAsState(if (focused) 1.05f else 1f, tween(180), label = "episode focus")
     val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "episode highlight")
     val painter = rememberMovieArtworkPainter(item?.thumbPath, posters, artworkWidth, artworkWidth * 9 / 16, loadArtwork)
     val reveal = rememberArtworkReveal(item?.thumbPath, artworkWidth, painter != null)
@@ -81,19 +75,7 @@ internal fun EpisodeCard(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(CinemaColors.Panel)
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
-            .drawWithCache {
-                val shine = Brush.linearGradient(listOf(CinemaColors.Foreground.copy(alpha = 0.22f), Color.Transparent,
-                    CinemaColors.Foreground.copy(alpha = 0.06f)), Offset.Zero, Offset(size.width, size.height))
-                val stroke = Stroke(1.dp.toPx())
-                val corner = CornerRadius(9.dp.toPx())
-                onDrawWithContent {
-                    drawContent()
-                    if (light.value > 0f) {
-                        drawRect(shine, alpha = light.value)
-                        drawRoundRect(CinemaColors.Foreground, cornerRadius = corner, alpha = light.value * 0.65f, style = stroke)
-                    }
-                }
-            }, contentAlignment = Alignment.Center) {
+            .focusLight(light, 9.dp), contentAlignment = Alignment.Center) {
             if (painter != null) ArtworkImage(painter, reveal, Modifier.fillMaxSize())
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(12.dp)) {
                 Text((item?.title ?: placeholderLabel).take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.5f), fontSize = 32.sp)
@@ -109,7 +91,7 @@ internal fun EpisodeCard(
                 }
             }
         }
-        Text(item?.title ?: "Loading…", color = CinemaColors.Foreground.copy(alpha = if (focused) 1f else 0.85f),
+        Text(item?.title ?: "Loading…", color = CinemaColors.Foreground.copy(alpha = if (focused) 1f else 0.7f),
             fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text((label ?: item?.subtitle)?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(status, color = if (item?.viewOffsetMs != null && item.viewOffsetMs > 0 && !item.watched) CinemaColors.Accent else CinemaColors.Muted,
