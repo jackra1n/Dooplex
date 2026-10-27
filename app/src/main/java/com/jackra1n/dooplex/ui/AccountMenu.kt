@@ -7,18 +7,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,10 +24,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -52,8 +48,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
@@ -82,6 +76,7 @@ internal fun AccountChip(
     Box {
         Row(
             Modifier.height(unit * 76).glassTrack()
+                .drawBehind { if (expanded) drawRoundRect(Glass.Light, cornerRadius = CornerRadius(size.height / 2)) }
                 .then(focusModifier)
                 .onFocusChanged { focused = it.isFocused }
                 .onPreviewKeyEvent { event ->
@@ -100,7 +95,7 @@ internal fun AccountChip(
         ) {
             AccountPicture(accountName, avatar, unit * 60, labelStyle)
             if (expanded) Text(
-                accountName, color = CinemaColors.Foreground,
+                accountName, color = Glass.Ink,
                 style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = unit * 18).widthIn(max = unit * 360),
             )
@@ -148,61 +143,17 @@ private fun AccountMenu(
         withFrameNanos { }
         first.requestFocus()
     }
-    Popup(
-        alignment = Alignment.TopStart,
-        offset = offset,
-        onDismissRequest = { if (confirming) confirming = false else onDismiss() },
-        properties = PopupProperties(focusable = true),
-    ) {
-        Column(
-            Modifier.width(320.dp).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp)
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (confirming) {
-                Text("Sign out of Plex? You'll need to scan the sign-in code again.",
-                    color = CinemaColors.Muted, fontSize = 15.sp, lineHeight = 21.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                MenuRow("Cancel", Modifier.focusRequester(first)) { confirming = false }
-                MenuRow("Sign out", onClick = onSignOut)
-            } else {
-                MenuRow("Switch server", Modifier.focusRequester(first), detail = serverName, more = true,
-                    onClick = onSwitchServer)
-                Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).fillMaxWidth().height(1.dp)
-                    .background(Glass.Rim))
-                MenuRow("Sign out") { confirming = true }
-            }
+    GlassMenu(Alignment.TopStart, offset, 320.dp, onDismiss = { if (confirming) confirming = false else onDismiss() }) {
+        if (confirming) {
+            Text("Sign out of Plex? You'll need to scan the sign-in code again.",
+                color = CinemaColors.Muted, fontSize = 15.sp, lineHeight = 21.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            MenuRow("Cancel", Modifier.focusRequester(first)) { confirming = false }
+            MenuRow("Sign out", onClick = onSignOut)
+        } else {
+            MenuRow("Switch server", Modifier.focusRequester(first), detail = serverName, more = true, onClick = onSwitchServer)
+            MenuDivider()
+            MenuRow("Sign out") { confirming = true }
         }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun MenuRow(
-    label: String,
-    modifier: Modifier = Modifier,
-    detail: String = "",
-    more: Boolean = false,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val ink = if (focused) Glass.Ink else CinemaColors.Foreground
-    Row(
-        modifier.fillMaxWidth().height(if (detail.isBlank()) 52.dp else 62.dp).clip(RoundedCornerShape(50))
-            .background(if (focused) Glass.Light else Color.Transparent)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() }, indication = null,
-                role = Role.Button, onClick = onClick,
-            )
-            .padding(horizontal = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, color = ink, fontSize = 19.sp)
-            if (detail.isNotBlank()) Text(detail, color = ink.copy(alpha = 0.65f), fontSize = 14.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (more) Text("›", color = ink, fontSize = 26.sp)
     }
 }
