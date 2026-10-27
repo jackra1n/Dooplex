@@ -48,6 +48,8 @@ import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.plex.PlexNavigationSelection
 import com.jackra1n.dooplex.plex.PlexNavigationStore
 import com.jackra1n.dooplex.plex.PlexServer
+import com.jackra1n.dooplex.search.SearchScreen
+import com.jackra1n.dooplex.search.SearchState
 import com.jackra1n.dooplex.setup.BrowserStage
 import com.jackra1n.dooplex.setup.PlexBrowserScreen
 import com.jackra1n.dooplex.setup.PlexBrowserState
@@ -57,6 +59,8 @@ import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.KeptScreen
 import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.ui.theme.DooplexTheme
+import com.jackra1n.dooplex.watchlist.WatchlistScreen
+import com.jackra1n.dooplex.watchlist.WatchlistState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,6 +85,9 @@ class MainActivity : ComponentActivity() {
     private var splash by mutableStateOf(true)
     private var homeReady by mutableStateOf(false)
     private var homeEpoch by mutableIntStateOf(0)
+    private var page by mutableStateOf<String?>(null)
+    private var searchState by mutableStateOf<SearchState?>(null)
+    private var watchlistState by mutableStateOf<WatchlistState?>(null)
     private val showHistory = mutableStateListOf<ShowBrowseState>()
     private var posterRepository: PosterRepository? = null
     private var serverId: String? = null
@@ -120,16 +127,19 @@ class MainActivity : ComponentActivity() {
             DooplexTheme {
                 val library = activeLibrary
                 val posters = posterRepository
-                val home = homeState.takeIf { showingHome }
-                if (state.stage == BrowserStage.TITLES && posters != null && (home != null || library != null)) {
+                val current = page
+                val home = homeState.takeIf { showingHome && current == null }
+                if (state.stage == BrowserStage.TITLES && posters != null && (home != null || library != null || current != null)) {
                     val blocked = playback.running || state.busy
-                    val child = showHistory.lastOrNull().takeIf { home == null && library?.type == "show" }
+                    val child = showHistory.lastOrNull().takeIf { home == null && current == null && library?.type == "show" }
                     val route = when {
+                        current != null -> current
                         home != null -> "home"
                         child != null -> "show:${child.path}"
                         else -> "library:${library?.key}"
                     }
                     val screen = when {
+                        current != null -> current
                         home != null -> if (home.selectedMovie != null) "home/details" else "home"
                         child != null -> "show/${child.level.name.lowercase()}"
                         library != null -> "library/${library.type}" + if (movieLibrary?.selectedMovie != null && library.type == "movie") "/details" else ""
@@ -145,20 +155,24 @@ class MainActivity : ComponentActivity() {
                             accountName = state.accountName,
                             accountAvatar = accountAvatar,
                             serverName = serverName,
-                            activeType = if (home != null) "home" else library?.type.orEmpty(),
+                            activeType = current ?: if (home != null) "home" else library?.type.orEmpty(),
                             movieTitle = collectionLabel("movie"),
                             showTitle = collectionLabel("show"),
                             focus = collectionFocus,
-                            enabled = !blocked && movieLibrary?.selectedMovie == null && homeState?.selectedMovie == null,
+                            enabled = !blocked && movieLibrary?.selectedMovie == null && homeState?.selectedMovie == null &&
+                                searchState?.details?.movie == null && watchlistState?.details?.movie == null,
                             onHome = ::showHome,
                             onMovies = { selectCollection("movie") },
                             onShows = { selectCollection("show") },
+                            onWatchlist = { openPage("watchlist") },
+                            onSearch = { openPage("search") },
                             onDown = { collectionFocus.enterHeader(route) },
                             onSwitchServer = ::showServerPicker,
                             onSignOut = ::signOut,
                         )
                     }
                     val shown = when {
+                        current != null -> current
                         home != null -> "home"
                         child != null -> "child"
                         else -> library?.type
@@ -223,8 +237,26 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                    // Home has no error area of its own, so failures there (starting playback) show briefly.
-                    if (home != null) state.error?.let { MessageToast(it) { state = state.copy(error = null) } }
+                    when (current) {
+                        "search" -> searchState?.let {
+                            SearchScreen(
+                                state = it, posters = posters, serverName = serverName, navigation = navigation,
+                                focus = collectionFocus, enabled = !blocked,
+                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                onOpen = ::openFromHome, onBack = ::goHome,
+                            )
+                        }
+                        "watchlist" -> watchlistState?.let {
+                            WatchlistScreen(
+                                state = it, posters = posters, serverName = serverName, navigation = navigation,
+                                focus = collectionFocus, enabled = !blocked,
+                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
+                                onOpen = ::openFromHome, onBack = ::goHome,
+                            )
+                        }
+                    }
+                    // These pages have no error area of their own, so failures there (starting playback) show briefly.
+                    if (home != null || current != null) state.error?.let { MessageToast(it) { state = state.copy(error = null) } }
                 } else {
                     LaunchedEffect(state.stage) {
                         Analytics.screen = state.stage.name.lowercase()
@@ -459,9 +491,24 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openHome() {
+        page = null
         homeOrigin = false
         showingHome = true
         state = state.copy(stage = BrowserStage.TITLES, heading = "Home", error = null, canGoBack = true)
+    }
+
+    /** Search and Watchlist are peers of Home: their tab shows them, and Back returns to Home. */
+    private fun openPage(name: String) {
+        if (PlaybackMonitor.state.value.running || state.busy) return
+        val selected = connection ?: return
+        if (name == "search" && searchState == null) searchState = SearchState(PlexClient(selected), lifecycleScope)
+        if (name == "watchlist") {
+            val token = account?.token ?: return
+            (watchlistState ?: WatchlistState(accountClient, token, PlexClient(selected), lifecycleScope)
+                .also { watchlistState = it }).refresh()
+        }
+        page = name
+        state = state.copy(stage = BrowserStage.TITLES, error = null)
     }
 
     private fun showHome() {
@@ -486,6 +533,7 @@ class MainActivity : ComponentActivity() {
         val level = if (item.type == "season") ShowBrowseLevel.EPISODES else ShowBrowseLevel.SEASONS
         showHistory += ShowBrowseState(path, item.title, level, selected, lifecycleScope)
         activeLibrary = library
+        page = null
         showingHome = false
         homeOrigin = true
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
@@ -531,6 +579,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         activeLibrary = library
+        page = null
         showingHome = false
         homeOrigin = false
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
@@ -555,7 +604,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun selectCollection(type: String) {
-        if (PlaybackMonitor.state.value.running || state.busy || !showingHome && activeLibrary?.type == type) return
+        if (PlaybackMonitor.state.value.running || state.busy || page == null && !showingHome && activeLibrary?.type == type) return
         selectLibrary(libraryOf(type) ?: return)
     }
 
@@ -692,6 +741,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun closeCollections() {
+        page = null
+        searchState?.close()
+        searchState = null
+        watchlistState?.close()
+        watchlistState = null
         closeMovies()
         closeShows()
         activeLibrary = null

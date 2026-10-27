@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +43,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -69,6 +71,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.LocalTextStyle
+import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexLibrary
@@ -86,6 +89,9 @@ internal class CollectionFocusState {
     val homeTab = FocusRequester()
     val movieTab = FocusRequester()
     val showTab = FocusRequester()
+    val watchlistTab = FocusRequester()
+    val searchTab = FocusRequester()
+    val account = FocusRequester()
     var navigationType by mutableStateOf<String?>(null)
         private set
     var navigationEpoch by mutableIntStateOf(0)
@@ -102,6 +108,8 @@ internal class CollectionFocusState {
     fun tab(type: String): FocusRequester = when (type) {
         "home" -> homeTab
         "movie" -> movieTab
+        "watchlist" -> watchlistTab
+        "search" -> searchTab
         else -> showTab
     }
 
@@ -172,6 +180,8 @@ internal fun CollectionNavigationBar(
     onHome: () -> Unit,
     onMovies: () -> Unit,
     onShows: () -> Unit,
+    onWatchlist: () -> Unit,
+    onSearch: () -> Unit,
     onDown: () -> Unit,
     onSwitchServer: () -> Unit,
     onSignOut: () -> Unit,
@@ -181,6 +191,8 @@ internal fun CollectionNavigationBar(
             add("home" to "Home")
             if (movieTitle != null) add("movie" to movieTitle)
             if (showTitle != null) add("show" to showTitle)
+            add("watchlist" to "")
+            add("search" to "")
         }
     }
     var focusedType by remember { mutableStateOf<String?>(null) }
@@ -200,8 +212,8 @@ internal fun CollectionNavigationBar(
         val padding = 36 * unitPx
         val maximum = 420 * unitPx
         FloatArray(tabs.size) { index ->
-            // Bold is the widest face, so a pill never resizes when its label changes weight.
-            (textMeasurer.measure(
+            // Icon tabs are square; bold is the widest text face, so a pill never resizes when its label changes weight.
+            if (tabs[index].second.isEmpty()) pillHeight else (textMeasurer.measure(
                 text = tabs[index].second, style = labelStyle.copy(fontWeight = FontWeight.Bold),
                 maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                 constraints = Constraints(maxWidth = (maximum - padding).toInt().coerceAtLeast(0)),
@@ -229,7 +241,8 @@ internal fun CollectionNavigationBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            AccountChip(accountName, accountAvatar, serverName, unit, labelStyle, enabled, onDown, onSwitchServer, onSignOut)
+            AccountChip(accountName, accountAvatar, serverName, unit, labelStyle, enabled,
+                if (visible) Modifier.focusRequester(focus.account) else Modifier, onDown, onSwitchServer, onSignOut)
         }
         if (tabs.isNotEmpty()) Row(
             Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
@@ -276,9 +289,10 @@ internal fun CollectionNavigationBar(
                                     if (enabled && event.type == KeyEventType.KeyDown) {
                                         val current = tabs.indexOfFirst { it.first == focus.navigationType }
                                             .takeIf { it >= 0 } ?: index
-                                        val next = (current + if (event.key == Key.DirectionRight) 1 else -1)
-                                            .coerceIn(0, tabs.lastIndex)
-                                        focus.moveTab(tabs[next].first)
+                                        val next = current + if (event.key == Key.DirectionRight) 1 else -1
+                                        // Past the first tab is the account.
+                                        if (next < 0) focus.account.requestFocus()
+                                        else focus.moveTab(tabs[next.coerceAtMost(tabs.lastIndex)].first)
                                     }
                                     true
                                 }
@@ -290,7 +304,10 @@ internal fun CollectionNavigationBar(
                                 focus.focusTab(type)
                             } else if (focusedType == type) focusedType = null
                         }
-                        .semantics { selected = activeType == type }
+                        .semantics {
+                            selected = activeType == type
+                            if (label.isEmpty()) contentDescription = if (type == "search") "Search" else "Watchlist"
+                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null, role = Role.Tab,
@@ -300,6 +317,8 @@ internal fun CollectionNavigationBar(
                                     when (type) {
                                         "home" -> onHome()
                                         "movie" -> onMovies()
+                                        "watchlist" -> onWatchlist()
+                                        "search" -> onSearch()
                                         else -> onShows()
                                     }
                                 }
@@ -307,12 +326,15 @@ internal fun CollectionNavigationBar(
                         ).padding(horizontal = unit * 18),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, color = if (isActive) Glass.Light else Glass.IdleInk,
-                        style = style, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val face: @Composable (Color, Modifier) -> Unit = { ink, modifier ->
+                        if (label.isEmpty()) Icon(if (type == "search") DooplexIcons.Search else DooplexIcons.Bookmark,
+                            contentDescription = null, tint = ink, modifier = modifier.size(unit * 34))
+                        else Text(label, color = ink, style = style, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = modifier)
+                    }
+                    face(if (isActive) Glass.Light else Glass.IdleInk, Modifier)
                     // Dark ink only where the light pill covers the glyphs, so a label can split mid-slide.
-                    Text(label, color = Glass.Ink, style = style,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clearAndSetSemantics {}.drawWithContent {
+                    face(Glass.Ink, Modifier.clearAndSetSemantics {}.drawWithContent {
                             if (highlight.alpha.value > INK_FLIP_ALPHA) {
                                 val left = highlight.x.value - tabOffsets[index] - (tabWidths[index] - size.width) / 2f
                                 val clipLeft = left.coerceAtLeast(0f)

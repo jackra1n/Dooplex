@@ -101,6 +101,35 @@ class PlexAccountClient(private val clientId: String) {
         }
     }
 
+    /** The account's Plex watchlist, newest first. It lives on Plex's Discover service, not on a server. */
+    suspend fun watchlist(token: String): List<WatchlistEntry> = withContext(Dispatchers.IO) {
+        require(headerValue(token)) { "A valid Plex account token is required." }
+        json {
+            buildList {
+                var start = 0
+                while (true) {
+                    val page = JSONObject(request(
+                        "https://discover.provider.plex.tv/library/sections/watchlist/all?sort=watchlistedAt:desc" +
+                            "&includeCollections=1&includeExternalMedia=1" +
+                            "&X-Plex-Container-Start=$start&X-Plex-Container-Size=$WATCHLIST_PAGE",
+                        token = token,
+                    )).getJSONObject("MediaContainer")
+                    val items = page.optJSONArray("Metadata") ?: break
+                    for (index in 0 until items.length()) {
+                        val item = items.optJSONObject(index) ?: continue
+                        val guid = item.optString("guid")
+                        val type = item.optString("type")
+                        if (guid.startsWith("plex://") && (type == "movie" || type == "show")) {
+                            add(WatchlistEntry(guid, type, item.optString("title")))
+                        }
+                    }
+                    start += items.length()
+                    if (items.length() < WATCHLIST_PAGE || start >= page.optInt("totalSize", Int.MAX_VALUE)) break
+                }
+            }
+        }
+    }
+
     suspend fun servers(token: String): List<PlexServer> = withContext(Dispatchers.IO) {
         require(headerValue(token)) { "A valid Plex account token is required." }
         json {
@@ -255,6 +284,8 @@ class PlexAccountClient(private val clientId: String) {
     private class RequestFailure(message: String) : IOException(message)
 
     private companion object {
+        const val WATCHLIST_PAGE = 100
+
         fun headerValue(value: String): Boolean = value.isNotEmpty() && value != "null" && value.all { it.code in 33..126 }
         fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
     }

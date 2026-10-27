@@ -12,6 +12,7 @@ data class PlexServer(
     val connections: List<PlexServerEndpoint>,
 )
 data class PlexLibrary(val key: String, val title: String, val type: String)
+data class WatchlistEntry(val guid: String, val type: String, val title: String)
 /**
  * Optional artwork is restricted to local metadata paths or trusted Plex-hosted clear-logo assets.
  * Credits retain server order. Ratings carry explicit provenance on Plex's 0..10 scale; source

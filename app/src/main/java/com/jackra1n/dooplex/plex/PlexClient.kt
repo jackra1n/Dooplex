@@ -285,12 +285,51 @@ class PlexClient(private val connection: PlexConnection) {
             hubRows("/hubs", mapOf("count" to HOME_ROW_ITEMS, "excludeContinueWatching" to "1"), "home")
     }
 
-    private suspend fun hubRows(path: String, parameters: Map<String, String>, operation: String): List<PlexHomeRow> = try {
+    /**
+     * Server search: a shelf per kind in a fixed order, so rows never move under someone typing.
+     * The server answers nothing for a single character, so callers wait for two.
+     */
+    suspend fun search(query: String): List<PlexHomeRow> = withContext(Dispatchers.IO) {
+        hubRows("/hubs/search", mapOf("query" to query, "limit" to HOME_ROW_ITEMS), "search", SEARCH_KINDS)
+    }
+
+    /** This server's copies of titles named by `plex://` ids (watchlist entries); ids it lacks are absent. */
+    suspend fun itemsByGuid(type: String, guids: List<String>): Map<String, PlexBrowseItem> = withContext(Dispatchers.IO) {
+        val plexType = when (type) {
+            "movie" -> "1"
+            "show" -> "2"
+            else -> return@withContext emptyMap()
+        }
+        try {
+            buildMap {
+                for (chunk in guids.chunked(GUID_CHUNK)) {
+                    val body = request("/library/all", mapOf("type" to plexType), lists = mapOf("guid" to chunk),
+                        operation = "watchlist")
+                    val items = JSONObject(body).getJSONObject("MediaContainer").optJSONArray("Metadata") ?: continue
+                    for (index in 0 until items.length()) {
+                        val source = items.optJSONObject(index) ?: continue
+                        parseBrowseItem(source)?.let { put(source.optString("guid"), it) }
+                    }
+                }
+            }
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid library information.")
+        }
+    }
+
+    private suspend fun hubRows(
+        path: String,
+        parameters: Map<String, String>,
+        operation: String,
+        kinds: List<String>? = null,
+    ): List<PlexHomeRow> = try {
         val hubs = JSONObject(request(path, parameters, operation = operation))
             .getJSONObject("MediaContainer").optJSONArray("Hub")
+        val ordered = (0 until (hubs?.length() ?: 0)).mapNotNull { hubs?.optJSONObject(it) }
+            .filter { kinds == null || it.optString("type") in kinds }
+            .sortedBy { kinds?.indexOf(it.optString("type")) ?: 0 }
         buildList {
-            if (hubs != null) for (index in 0 until hubs.length()) {
-                val hub = hubs.optJSONObject(index) ?: continue
+            for ((index, hub) in ordered.withIndex()) {
                 val metadata = hub.optJSONArray("Metadata") ?: continue
                 val items = (0 until metadata.length()).mapNotNull { metadata.optJSONObject(it)?.let { item -> homeItem(item) } }
                 if (items.isNotEmpty()) add(PlexHomeRow(
@@ -459,7 +498,7 @@ class PlexClient(private val connection: PlexConnection) {
         )
         // The documented session header disambiguates playback sessions for a stable client.
         // Media/part and direct-play hints supplement it, but do not guarantee dashboard fields.
-        request("/:/timeline", parameters, sessionId, "timeline")
+        request("/:/timeline", parameters, sessionId, operation = "timeline")
         currentCoroutineContext().ensureActive()
     }
 
@@ -467,12 +506,13 @@ class PlexClient(private val connection: PlexConnection) {
         path: String,
         parameters: Map<String, String> = emptyMap(),
         sessionId: String? = null,
+        lists: Map<String, List<String>> = emptyMap(),
         operation: String,
     ): String {
         currentCoroutineContext().ensureActive()
         var http: HttpURLConnection? = null
         try {
-            val client = URI(url(path, parameters)).toURL().openConnection() as HttpURLConnection
+            val client = URI(url(path, parameters, lists)).toURL().openConnection() as HttpURLConnection
             http = client
             client.requestMethod = "GET"
             // Never forward credentials to a redirect target, even on a successful HTTP response.
@@ -520,10 +560,11 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
-    private fun url(path: String, parameters: Map<String, String>): String {
-        val query = parameters.entries.joinToString("&") { (key, value) ->
-            "${encode(key)}=${encode(value)}"
-        }
+    /** A list value is sent as its items encoded one by one and joined with a literal comma, as Plex expects. */
+    private fun url(path: String, parameters: Map<String, String>, lists: Map<String, List<String>> = emptyMap()): String {
+        val query = (parameters.map { (key, value) -> "${encode(key)}=${encode(value)}" } +
+            lists.map { (key, values) -> "${encode(key)}=" + values.joinToString(",") { encode(it) } })
+            .joinToString("&")
         return baseUrl + path + if (query.isEmpty()) "" else "?$query"
     }
 
@@ -557,6 +598,8 @@ class PlexClient(private val connection: PlexConnection) {
         val ART_PATH = Regex("/library/metadata/[0-9]+/art(?:/[0-9]+)?")
         val BROWSE_TYPES = setOf("movie", "show", "season", "episode")
         const val HOME_ROW_ITEMS = "24"
+        val SEARCH_KINDS = listOf("movie", "show", "episode")
+        const val GUID_CHUNK = 40
         val PLAYBACK_STATES = setOf("buffering", "playing", "paused", "stopped")
 
         fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())

@@ -71,6 +71,7 @@ internal fun AccountChip(
     unit: Dp,
     labelStyle: TextStyle,
     enabled: Boolean,
+    focusModifier: Modifier,
     onDown: () -> Unit,
     onSwitchServer: () -> Unit,
     onSignOut: () -> Unit,
@@ -81,6 +82,7 @@ internal fun AccountChip(
     Box {
         Row(
             Modifier.height(unit * 76).glassTrack()
+                .then(focusModifier)
                 .onFocusChanged { focused = it.isFocused }
                 .onPreviewKeyEvent { event ->
                     if (event.key != Key.DirectionDown) return@onPreviewKeyEvent false
