@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jackra1n.dooplex.details.MovieDetailsLoader
+import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexClient
 import com.jackra1n.dooplex.plex.PlexHomeRow
 import java.io.IOException
@@ -46,6 +47,7 @@ class SearchState(private val client: PlexClient, parentScope: CoroutineScope) {
             try {
                 rows = client.search(trimmed)
                 error = null
+                Analytics.event("search", "shelves" to rows.size, "results" to rows.sumOf { it.items.size })
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {

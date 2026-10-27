@@ -231,9 +231,6 @@ class MainActivity : ComponentActivity() {
                                 onItem = ::selectShowItem,
                                 navigation = navigation,
                                 focus = collectionFocus,
-                                library = library,
-                                libraries = state.libraries.filter { it.type == library.type },
-                                onLibrary = ::selectHeaderLibrary,
                             )
                         }
                     }
@@ -369,10 +366,15 @@ class MainActivity : ComponentActivity() {
                 collectionFocus.enterContent("home")
                 showHome()
             }
+            "tab:search", "tab:watchlist" -> {
+                collectionFocus.enterContent(command.removePrefix("tab:"))
+                openPage(command.removePrefix("tab:"))
+            }
             "tab:movie", "tab:show" -> {
                 collectionFocus.enterContent(command.removePrefix("tab:"))
                 selectCollection(command.removePrefix("tab:"))
             }
+            else -> if (command.startsWith("type:")) searchState?.type(command.removePrefix("type:"))
         }
     }
 

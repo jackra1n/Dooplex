@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jackra1n.dooplex.details.MovieDetailsLoader
+import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexAccountClient
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexClient
@@ -51,10 +52,12 @@ class WatchlistState(
                 items = entries.mapNotNull { found[it.guid] }
                 missing = entries.size - items.size
                 error = null
+                Analytics.event("watchlist", "entries" to entries.size, "found" to items.size)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {
                 error = failure.message ?: "Plex could not load your watchlist."
+                Analytics.event("watchlist", "error" to error)
             }
             loading = false
         }

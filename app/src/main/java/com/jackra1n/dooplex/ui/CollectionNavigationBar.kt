@@ -2,25 +2,18 @@ package com.jackra1n.dooplex.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -29,7 +22,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -42,9 +34,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -59,23 +51,17 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Icon
+import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.diagnostics.Analytics
-import com.jackra1n.dooplex.plex.PlexLibrary
-import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlinx.coroutines.launch
 
 /**
@@ -381,84 +367,4 @@ private fun rememberCapsule(index: Int, offsets: FloatArray, widths: FloatArray)
         capsule.alpha.animateTo(1f, CapsuleFade)
     }
     return capsule
-}
-
-/** A single library stays a compact label; multiple same-type sources expose an ID-keyed chooser. */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-internal fun CollectionLibraryControl(
-    library: PlexLibrary,
-    libraries: List<PlexLibrary>,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onChoose: (PlexLibrary) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    if (libraries.size > 1) {
-        var open by remember(library.key) { mutableStateOf(false) }
-        CinemaButton(onClick = { open = true }, enabled = enabled, modifier = modifier.widthIn(max = 300.dp)) {
-            Text("${library.title}  ⌄", fontSize = 16.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { contentDescription = "Library: ${library.title}. Choose another library." })
-        }
-        if (open) CollectionLibraryDialog(
-            libraries = libraries,
-            selectedKey = library.key,
-            onDismiss = { open = false; onDismiss() },
-            onChoose = { open = false; onChoose(it) },
-        )
-    } else {
-        Text(library.title, color = CinemaColors.Foreground, fontSize = 18.sp,
-            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = modifier.padding(horizontal = 8.dp))
-    }
-}
-
-/** Duplicate titles remain distinguishable, while selection and persistence always use library IDs. */
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-internal fun CollectionLibraryDialog(
-    libraries: List<PlexLibrary>,
-    selectedKey: String?,
-    onDismiss: () -> Unit,
-    onChoose: (PlexLibrary) -> Unit,
-) {
-    val initial = remember { FocusRequester() }
-    val initialKey = selectedKey?.takeIf { key -> libraries.any { it.key == key } } ?: libraries.firstOrNull()?.key
-    val duplicateTitles = remember(libraries) { libraries.groupingBy { it.title }.eachCount().filterValues { it > 1 }.keys }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopCenter) {
-            Column(
-                Modifier.padding(top = 80.dp).widthIn(max = 520.dp).fillMaxWidth()
-                    .background(CinemaColors.Canvas, RoundedCornerShape(22.dp)).glassRim(22.dp)
-                    .verticalScroll(rememberScrollState()).padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("Choose a library", color = CinemaColors.Foreground, fontSize = 22.sp,
-                    fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 10.dp))
-                libraries.forEach { library ->
-                    CinemaButton(
-                        onClick = { onChoose(library) }, selected = selectedKey == library.key,
-                        modifier = Modifier.fillMaxWidth()
-                            .then(if (library.key == initialKey) Modifier.focusRequester(initial) else Modifier),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(library.title, fontSize = 17.sp,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (library.title in duplicateTitles) Text("Library ${library.key}",
-                                fontSize = 13.sp)
-                        }
-                        if (library.key == selectedKey) Text("Selected", fontSize = 12.sp)
-                    }
-                }
-                CinemaButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cancel", fontSize = 16.sp)
-                }
-            }
-        }
-        LaunchedEffect(Unit) {
-            withFrameNanos { }
-            if (initialKey != null) initial.requestFocus()
-        }
-    }
 }

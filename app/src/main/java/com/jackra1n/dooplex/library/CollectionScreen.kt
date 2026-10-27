@@ -98,8 +98,8 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
-import com.jackra1n.dooplex.ui.CollectionLibraryControl
 import com.jackra1n.dooplex.ui.CollectionPosterCard
+import com.jackra1n.dooplex.ui.TextTab
 import com.jackra1n.dooplex.ui.WhenVisible
 import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.glassRim
@@ -175,7 +175,6 @@ internal fun CollectionScreen(
     val scroller = rememberGridRowScroller(grid)
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }
-    val backFocus = remember { FocusRequester() }
     val libraryFocus = remember { FocusRequester() }
     val route = "library:${state.library.key}"
     var navigationViewportIndex by rememberSaveable(state.library.key) { mutableIntStateOf(-1) }
@@ -382,7 +381,7 @@ internal fun CollectionScreen(
                 snapshotFlow { headerMounted }.first { it }
                 withFrameNanos { }
                 if (restoreEpoch != focusEpoch) return@LaunchedEffect
-                backFocus.requestFocus()
+                sortFocus.requestFocus()
             }
             if (restoreEpoch != focusEpoch) return@LaunchedEffect
             pendingFocusIndex = null
@@ -542,13 +541,10 @@ internal fun CollectionScreen(
                             libraryFocus = libraryFocus,
                             libraries = libraries,
                             onLibrary = onLibrary,
-                            onLibraryDismiss = { focus.enterHeader(route) },
                             error = error,
                             compact = compact,
                             enabled = controlsEnabled,
-                            backFocus = backFocus,
                             sortFocus = sortFocus,
-                            onBack = onBack,
                             onSort = { restoreGrid(); sortOpen = true },
                             onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
                             modifier = Modifier.onFocusChanged {
@@ -749,13 +745,10 @@ private fun CollectionHeader(
     libraryFocus: FocusRequester,
     libraries: List<PlexLibrary>,
     onLibrary: (PlexLibrary) -> Unit,
-    onLibraryDismiss: () -> Unit,
     error: String?,
     compact: Boolean,
     enabled: Boolean,
-    backFocus: FocusRequester,
     sortFocus: FocusRequester,
-    onBack: () -> Unit,
     onSort: () -> Unit,
     onToggleUnwatched: () -> Unit,
     modifier: Modifier,
@@ -763,15 +756,18 @@ private fun CollectionHeader(
     CollectionHeaderChrome(
         title = "",
         subtitle = "",
-        libraryControl = { modifier ->
-            CollectionLibraryControl(
-                library = state.library,
-                libraries = libraries,
-                enabled = enabled,
-                modifier = modifier.focusRequester(libraryFocus),
-                onChoose = onLibrary,
-                onDismiss = onLibraryDismiss,
-            )
+        // A server with several libraries of this kind gets one tab each; with one, the top bar names it.
+        leading = {
+            if (libraries.size > 1) libraries.forEach { library ->
+                val current = library.key == state.library.key
+                TextTab(
+                    label = library.title,
+                    selected = current,
+                    enabled = enabled,
+                    modifier = if (current) Modifier.focusRequester(libraryFocus) else Modifier,
+                    onClick = { if (!current) onLibrary(library) },
+                )
+            }
         },
         count = when {
             state.loading -> "Loading your library…"
@@ -781,17 +777,11 @@ private fun CollectionHeader(
         hint = if (state.isShow) "Select a show for seasons" else "Select a movie for details",
         navigation = navigation,
         compact = compact,
-        enabled = enabled,
-        backFocus = backFocus,
-        onBack = onBack,
         modifier = modifier,
         actions = {
-            CinemaButton(onClick = onSort, modifier = Modifier.focusRequester(sortFocus), enabled = enabled) {
-                ControlText("Sort · ${state.sort.title}${if (compact) "" else "  ⌄"}")
-            }
-            CinemaButton(onClick = onToggleUnwatched, enabled = enabled, selected = state.unwatchedOnly) {
-                ControlText(if (state.unwatchedOnly) "Unwatched · On" else "Unwatched")
-            }
+            TextTab(label = "Sort · ${state.sort.title}  ⌄", enabled = enabled,
+                modifier = Modifier.focusRequester(sortFocus), onClick = onSort)
+            TextTab(label = "Unwatched", selected = state.unwatchedOnly, enabled = enabled, onClick = onToggleUnwatched)
         },
     ) {
         if (error != null) ErrorNote(error, Modifier.padding(top = 12.dp))
@@ -814,16 +804,13 @@ internal fun CollectionHeaderChrome(
     count: String,
     hint: String?,
     navigation: @Composable () -> Unit,
-    libraryControl: @Composable (Modifier) -> Unit,
     compact: Boolean,
-    enabled: Boolean,
-    backFocus: FocusRequester,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    backLabel: String = "‹  Sources",
+    leading: @Composable () -> Unit = {},
     actions: @Composable () -> Unit,
     footer: @Composable () -> Unit = {},
 ) {
+    // No on-screen back button: the remote's Back already goes back, and it would be one more stop.
     Column(modifier.fillMaxWidth()) {
         navigation()
         Row(
@@ -831,16 +818,13 @@ internal fun CollectionHeaderChrome(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CinemaButton(onClick = onBack, modifier = Modifier.focusRequester(backFocus), enabled = enabled) {
-                ControlText(backLabel)
-            }
-            Column(Modifier.weight(1f)) {
-                libraryControl(Modifier)
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                leading()
                 if (title.isNotBlank()) Text(
                     listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" · "),
                     color = CinemaColors.Muted, fontSize = if (compact) 16.sp else 18.sp,
                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 8.dp, top = 4.dp),
                 )
             }
             if (!compact) actions()

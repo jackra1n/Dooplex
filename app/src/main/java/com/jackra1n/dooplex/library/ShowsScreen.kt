@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
@@ -83,10 +82,8 @@ import com.jackra1n.dooplex.artwork.artworkBucket
 import com.jackra1n.dooplex.artwork.rememberArtworkReveal
 import com.jackra1n.dooplex.artwork.rememberMovieArtworkPainter
 import com.jackra1n.dooplex.plex.PlexBrowseItem
-import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
-import com.jackra1n.dooplex.ui.CollectionLibraryControl
 import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.rememberGridRowScroller
@@ -117,17 +114,12 @@ internal fun ShowsScreen(
     onItem: (PlexBrowseItem) -> Unit,
     navigation: @Composable () -> Unit,
     focus: CollectionFocusState,
-    library: PlexLibrary,
-    libraries: List<PlexLibrary>,
-    onLibrary: (PlexLibrary) -> Unit,
 ) {
     val grid = rememberSaveable(state.path, saver = LazyGridState.Saver) { LazyGridState() }
     val scroller = rememberGridRowScroller(grid)
     var focusedIndex by rememberSaveable(state.path) { mutableIntStateOf(0) }
     var headerSelected by rememberSaveable(state.path) { mutableStateOf(false) }
     val requesters = remember(state) { mutableStateMapOf<Int, FocusRequester>() }
-    val backFocus = remember(state) { FocusRequester() }
-    val libraryFocus = remember(state) { FocusRequester() }
     val route = "show:${state.path}"
     var navigationViewportIndex by rememberSaveable(state.path) { mutableIntStateOf(-1) }
     var navigationViewportOffset by rememberSaveable(state.path) { mutableIntStateOf(0) }
@@ -276,7 +268,9 @@ internal fun ShowsScreen(
                     snapshotFlow { headerMounted && grid.layoutInfo.visibleItemsInfo.any { it.index == 0 } }.first { it }
                     withFrameNanos { }
                     if (needsFocus && epoch == focusEpoch) {
-                        (if (focus.headerRoute == route && libraries.size > 1) libraryFocus else backFocus).requestFocus()
+                        // The header holds no controls: coming down from the bar goes on to the first card,
+                        // and going up from the cards reaches the bar.
+                        (requesters[0].takeIf { focus.headerRoute == route } ?: focus.tab("show")).requestFocus()
                         focus.completeHeader(route)
                     }
                 }
@@ -355,21 +349,7 @@ internal fun ShowsScreen(
                             "${state.total} $noun${if (state.total == 1) "" else "s"}${if (state.loading) " · Loading…" else ""}",
                         hint = null,
                         navigation = { Box(Modifier.bleed(start = horizontalEdge, end = horizontalEdge)) { navigation() } },
-                        libraryControl = { modifier ->
-                            CollectionLibraryControl(
-                                library = library,
-                                libraries = libraries,
-                                enabled = enabled,
-                                modifier = modifier.focusRequester(libraryFocus),
-                                onChoose = onLibrary,
-                                onDismiss = { focus.enterHeader(route) },
-                            )
-                        },
                         compact = compact,
-                        enabled = enabled,
-                        backFocus = backFocus,
-                        onBack = onBack,
-                        backLabel = "‹  Back",
                         actions = {
                             if (state.error != null) CinemaButton(onClick = state::retry, enabled = enabled) { ShowControlText("Retry") }
                         },
