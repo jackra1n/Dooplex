@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -53,7 +54,7 @@ internal fun EpisodeCard(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
     val scale = animateFloatAsState(if (focused) 1.05f else 1f, tween(180), label = "episode focus")
-    val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "episode highlight")
+    val focus = rememberFocusLight(focused)
     val painter = rememberMovieArtworkPainter(item?.thumbPath, posters, artworkWidth, artworkWidth * 9 / 16, loadArtwork)
     val reveal = rememberArtworkReveal(item?.thumbPath, artworkWidth, painter != null)
     val status = remember(item) {
@@ -64,18 +65,21 @@ internal fun EpisodeCard(
         }.joinToString(" · ").ifBlank { " " }
     }
     Column(
-        modifier.onFocusChanged {
+        modifier.zIndex(if (focused) 1f else 0f).onFocusChanged {
             focused = it.isFocused
-            if (it.isFocused) onFocus()
+            if (it.isFocused) {
+                focus.glow = glowColor(item?.thumbPath?.let { path -> posters.cachedAtmosphere(path, artworkWidth, artworkWidth * 9 / 16) })
+                onFocus()
+            }
         }.cardClick(item, enabled, onClick)
             .semantics { contentDescription = if (item == null) "$placeholderLabel, loading. Select to retry loading."
                 else listOf(item.title, item.subtitle, status).filter { it.isNotBlank() }.joinToString(", ") }
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).background(CinemaColors.Panel)
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusGlow(focus, 9.dp).clip(shape).background(CinemaColors.Panel)
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
-            .focusLight(light, 9.dp), contentAlignment = Alignment.Center) {
+            .focusSheen(focus, 9.dp), contentAlignment = Alignment.Center) {
             if (painter != null) ArtworkImage(painter, reveal, Modifier.fillMaxSize())
             else Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(12.dp)) {
                 Text((item?.title ?: placeholderLabel).take(1).uppercase(), color = CinemaColors.Accent.copy(alpha = 0.5f), fontSize = 32.sp)

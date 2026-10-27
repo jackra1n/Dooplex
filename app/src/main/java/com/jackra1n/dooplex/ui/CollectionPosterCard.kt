@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,11 +55,14 @@ internal fun CollectionPosterCard(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
     val scale = animateFloatAsState(if (focused) FOCUS_SCALE else 1f, tween(180), label = "poster focus")
-    val light = animateFloatAsState(if (focused) 1f else 0f, tween(140), label = "poster highlight")
+    val focus = rememberFocusLight(focused)
     Column(
-        modifier.onFocusChanged {
+        modifier.zIndex(if (focused) 1f else 0f).onFocusChanged {
             focused = it.isFocused
-            if (it.isFocused) onFocus()
+            if (it.isFocused) {
+                focus.glow = glowColor(item?.thumbPath?.let { path -> posters.cachedAtmosphere(path, artworkWidth, artworkWidth * 3 / 2) })
+                onFocus()
+            }
         }.cardClick(item, enabled, onClick).semantics {
             contentDescription = if (item == null) "$placeholderLabel, loading. Select to load this item."
                 else listOfNotNull(item.title, item.subtitle.takeIf { it.isNotBlank() },
@@ -66,10 +70,10 @@ internal fun CollectionPosterCard(
         }.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(shape)
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).focusGlow(focus, 9.dp).clip(shape)
             .background(CinemaColors.Panel)
             .border(0.5.dp, CinemaColors.Foreground.copy(alpha = 0.07f), shape)
-            .focusLight(light, 9.dp)) {
+            .focusSheen(focus, 9.dp)) {
             PosterArtwork(item?.thumbPath, posters, artworkWidth, loadArtwork,
                 Modifier.fillMaxSize(), item?.title ?: placeholderLabel, metadataLoading = item == null)
             if (item?.watched == true) {
