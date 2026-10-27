@@ -19,6 +19,23 @@ a measured stutter, a crash, or an evening on the Zidoo.
 | [plex-api.md](plex-api.md) | The Plex endpoints we use and their quirks. |
 | [design.md](design.md) | Look and feel decisions: palette, glass, top bar, motion, icon. |
 
+## Where the code lives
+
+Packages under `app/src/main/java/com/jackra1n/dooplex/`, one per feature:
+
+| Package | Contents |
+| --- | --- |
+| *(root)* | `MainActivity` (navigation between screens, benchmark commands) and `DooplexApplication`. |
+| `home` | The Home screen and its state. |
+| `library` | Movies and TV Shows grids, a show's seasons and episodes, and their states. |
+| `details` | Movie details. |
+| `setup` | Sign-in, server and library pickers, the start screen. |
+| `playback` | Handing off to Zidoo's player and reporting progress to Plex. |
+| `artwork` | Poster loading and caching, artwork painters, the background wash. |
+| `plex` | Plex clients, saved account and navigation, models. |
+| `ui` | Shared components: top bar, buttons, glass, poster card, kept screens, grid scroller; `ui/theme` holds colours and type. |
+| `diagnostics` | Analytics and crash reporting for development builds. |
+
 ## How to write these docs
 
 - **One topic per file**, kebab-case name, listed in the table above.
