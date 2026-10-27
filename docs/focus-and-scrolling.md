@@ -1,9 +1,9 @@
 # Focus and scrolling
 
 Every lazy list and grid on the Home, library and show screens sets its own
-`LocalBringIntoViewSpec`; do the same for new ones. The TV default (`PivotBringIntoViewSpec`) scrolls
-the focused item to 30% of the container, which caused most of the scroll bugs below. `LocalBringIntoViewSpec` is experimental, so its users need
-`@OptIn(ExperimentalFoundationApi::class)`.
+`LocalBringIntoViewSpec`; do the same for new ones. The TV default (`PivotBringIntoViewSpec`)
+scrolls the focused item to 30% of the container, which caused most of the scroll bugs below.
+`LocalBringIntoViewSpec` is experimental, so its users need `@OptIn(ExperimentalFoundationApi::class)`.
 
 ## Home (`HomeScreen.kt`)
 
@@ -22,9 +22,9 @@ the focused item to 30% of the container, which caused most of the scroll bugs b
 ## Movies and TV Shows grids
 
 - **`GridRowScroller`** moves the grid on Down and Up itself: the focused row rests where the first
-  row rests (just under the header), on one critically damped spring (stiffness 170, plx-native's
-  scroll constant). A new key retargets the running motion and keeps its speed, so a held D-pad
-  glides instead of stepping. It also handles the header and the end of the list.
+  row rests (just under the header), on one critically damped spring (stiffness 170). A new key
+  retargets the running motion and keeps its speed, so a held D-pad glides instead of stepping. It
+  also handles the header and the end of the list.
 - **While the scroller drives, bring-into-view is off** (`directionalFocus` makes the grid's spec
   return 0), so the focus system does not start a second scroll that fights the first.
 - **Posters' own Up and Down are handled in `onPreviewKeyEvent`**, moving focus by one row
@@ -32,7 +32,7 @@ the focused item to 30% of the container, which caused most of the scroll bugs b
 
 ## Tabs and the top bar
 
-- **Confirming a tab lands on the first poster** (as in plx-native): the bar calls
+- **Confirming a tab lands on the first poster**: the bar calls
   `CollectionFocusState.enterContent(type)`, and the screen focuses its first item and scrolls to
   the top. Home focuses the hero.
 - **That entry waits for the grid's first layout** before focusing, and the restore logic is

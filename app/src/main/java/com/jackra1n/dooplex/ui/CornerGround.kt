@@ -15,11 +15,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
 
-/** One colour per screen corner, blended across the screen: Plex's UltraBlur shape, as plx-native draws it. */
+/** One colour per screen corner, blended across the screen: Plex's UltraBlur shape. */
 @Immutable
 internal data class CornerColors(val topLeft: Color, val topRight: Color, val bottomRight: Color, val bottomLeft: Color) {
     companion object {
-        /** plx-native's ground before any artwork exists: warm light at the top left, dark at the top right. */
+        /** The ground before any artwork exists: warm light at the top left, dark at the top right. */
         val Welcome = CornerColors(Color(0xFF4A4640), Color(0xFF18181A), Color(0xFF5E3E24), Color(0xFF42424A))
     }
 }

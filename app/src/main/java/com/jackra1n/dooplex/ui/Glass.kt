@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 
-/** Glass tokens follow plx-native's chrome: a thin dark scrim with a hairline rim lit from above. */
+/** Glass tokens: a thin dark scrim with a hairline rim lit from above. */
 internal object Glass {
     val ScrimTop = Color.Black.copy(alpha = 0.20f)
     val ScrimBottom = Color.Black.copy(alpha = 0.36f)

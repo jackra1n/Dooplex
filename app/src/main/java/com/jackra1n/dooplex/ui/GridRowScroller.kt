@@ -15,8 +15,8 @@ import kotlinx.coroutines.launch
 private val RowSpring = spring(dampingRatio = 1f, stiffness = 170f, visibilityThreshold = 0.5f)
 
 /**
- * plx-native's grid motion: a focused row rests where the first row does, reached on one critically
- * damped spring. Retargeting keeps the current speed, so a held D-pad glides instead of stepping.
+ * Grid motion: a focused row rests where the first row does, reached on one critically damped
+ * spring. Retargeting keeps the current speed, so a held D-pad glides instead of stepping.
  * The grid's lazy item 0 is its header; cards start at lazy index 1.
  */
 internal class GridRowScroller(private val grid: LazyGridState, private val scope: CoroutineScope) {

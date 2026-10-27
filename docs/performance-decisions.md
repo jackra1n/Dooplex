@@ -66,12 +66,10 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 
 Real backdrop blur would need an extra full-screen GPU pass every frame on a GPU that is already
 the bottleneck. Decision (2026-10): approximate it with a dark translucent scrim and a hairline rim
-lit from the top ([design.md](design.md)). plx-native documents the same budget problem for its
-glass on TVs.
+lit from the top ([design.md](design.md)).
 
 ## Scrolling motion
 
-Rows move with one retargetable critically damped spring (stiffness 170, plx-native's scroll
-constant) that keeps its velocity when a new key arrives, instead of starting a new animation per
-key. Lazy lists prefetch with `LazyLayoutCacheWindow` so the next rows are composed in idle time.
+Rows move with one retargetable critically damped spring (stiffness 170) that keeps its velocity
+when a new key arrives, instead of starting a new animation per key. Lazy lists prefetch with `LazyLayoutCacheWindow` so the next rows are composed in idle time.
 Details are in [focus-and-scrolling.md](focus-and-scrolling.md).

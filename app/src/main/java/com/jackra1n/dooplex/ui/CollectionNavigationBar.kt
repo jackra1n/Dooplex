@@ -116,7 +116,7 @@ internal class CollectionFocusState {
         navigationEpoch++
     }
 
-    /** A confirmed tab drops focus into its page (plx-native): the hero on Home, the first poster elsewhere. */
+    /** A confirmed tab drops focus into its page: the hero on Home, the first poster elsewhere. */
     fun enterContent(type: String) {
         navigationType = null
         headerRoute = null
@@ -155,7 +155,7 @@ internal fun Modifier.bleed(start: Dp, end: Dp) = layout { measurable, constrain
  * A centred glass track: the current route keeps a translucent plate, focus slides a light pill over it.
  * Stable parent-owned requesters reattach when lazy headers scroll or destinations change.
  * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
- * Sizes follow plx-native's 1920-wide layout scaled to this screen; capsules animate draw-only.
+ * Sizes are laid out for a 1920-wide screen and scaled to this one; capsules animate draw-only.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -211,7 +211,7 @@ internal fun CollectionNavigationBar(
     val focusIndex = tabs.indexOfFirst { it.first == focusedType }
     val selection = rememberCapsule(activeIndex, tabOffsets, tabWidths)
     val highlight = rememberCapsule(focusIndex, tabOffsets, tabWidths)
-    // plx-native's safe area: 5% of the screen at the sides, so the bar is identical on every page.
+    // A 5% safe area at the sides, so the bar is identical on every page.
     Row(
         Modifier.fillMaxWidth().padding(start = unit * 96, end = unit * 96, top = unit * 54, bottom = unit * 40),
         verticalAlignment = Alignment.CenterVertically,

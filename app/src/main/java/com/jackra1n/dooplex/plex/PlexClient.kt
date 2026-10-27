@@ -278,7 +278,7 @@ class PlexClient(private val connection: PlexConnection) {
     /**
      * The dedicated Continue Watching hub, then the server's other Home hubs. The dedicated hub is the
      * one that honours "remove from Continue Watching"; `/hubs` drops its own copy with
-     * `excludeContinueWatching` (plx-native's measured behaviour). Hub items arrive embedded.
+     * `excludeContinueWatching`. Hub items arrive embedded.
      */
     suspend fun homeRows(): List<PlexHomeRow> = withContext(Dispatchers.IO) {
         hubRows("/hubs/continueWatching", mapOf("count" to HOME_ROW_ITEMS), "continue watching") +

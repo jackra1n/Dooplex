@@ -95,7 +95,7 @@ private const val HERO_SECONDS = 8L
 private val ShelfSpring = spring<Float>(dampingRatio = 1f, stiffness = 170f)
 
 /**
- * plx-native's Home: a rotating hero (art, logo, facts, synopsis, Play and Details) over the server's
+ * Home: a rotating hero (art, logo, facts, synopsis, Play and Details) over the server's
  * shelves. Focus in the shelves rests the focused row on one line under the bar, reached on the
  * same soft spring the library grid uses; each shelf returns to the card it last left.
  */

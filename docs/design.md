@@ -1,8 +1,7 @@
 # Design
 
-Dooplex follows plx-native's look: dark, artwork-led, with thin glass controls and backgrounds
-tinted by the focused poster. When in doubt, check how plx-native does it; its source and
-screenshots are public (github.com/GLinnik21/plx-native).
+Dooplex has a modern design: dark, artwork-led, with thin glass controls and backgrounds tinted by
+the focused poster.
 
 ## Colour
 
@@ -14,13 +13,14 @@ screenshots are public (github.com/GLinnik21/plx-native).
 | `Muted` | `#B7B7BE` | Secondary text |
 | `Accent` | `#E1E3E8` | The wordmark, highlights |
 
-The sign-in and start screens use a four-corner gradient (`CornerGround`, `CornerColors.Welcome`)
-taken from plx-native: warm grey `#4A4640` top left, charcoal `#18181A` top right, umber `#5E3E24`
+The sign-in and start screens use a four-corner gradient (`CornerGround`, `CornerColors.Welcome`):
+warm grey `#4A4640` top left, charcoal `#18181A` top right, umber `#5E3E24`
 bottom right, ash `#42424A` bottom left. It is drawn from a 32 × 18 px bitmap stretched to the
 screen, which is cheaper than drawing a full-screen gradient.
 
 Library and Home pages wash the background with three colours taken from the focused poster
-(`extractMovieAtmosphere`), cross-fading over 300 ms ([performance-decisions.md](performance-decisions.md)).
+(`extractMovieAtmosphere`), cross-fading over 300 ms
+([performance-decisions.md](performance-decisions.md)).
 
 ## Glass, without blur
 
@@ -35,7 +35,7 @@ Controls imitate glass without a live blur, which this GPU cannot afford (`Glass
 
 ## The top bar
 
-One layout on every page, matching plx-native: a 5% safe margin at the sides and top (96 px and
+One layout on every page: a 5% safe margin at the sides and top (96 px and
 54 px on a 1920 × 1080 screen), with sizes scaled by `screenWidthDp / 1920`. The account bubble sits
 at the left margin and the tab track is centred on the screen, never on the page content.
 
@@ -48,7 +48,7 @@ sideways when switching between Home and Movies.
 
 | What | Motion |
 | --- | --- |
-| Home page and library grids, up and down | Spring, damping 1, stiffness 170 (plx-native's scroll constant) |
+| Home page and library grids, up and down | Spring, damping 1, stiffness 170 |
 | Home shelves, sideways | Compose's default bring-into-view motion |
 | Tab capsule | Spring, damping 1: stiffness 240 to move, 300 to fade |
 | Buttons | Spring, damping 1, stiffness 320; focused buttons grow to 1.07× with a 10 dp shadow |

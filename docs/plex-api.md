@@ -20,7 +20,7 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
 
 - `GET /hubs/continueWatching?count=24` gives the Continue Watching row.
 - `GET /hubs?count=24&excludeContinueWatching=1` gives the other rows, without repeating Continue
-  Watching (plx-native measured the same behaviour). Hub items arrive embedded in the response.
+  Watching. Hub items arrive embedded in the response.
 - Episodes in a hub are shown with their show's poster, and seasons fall back to it when they have
   none (`PlexClient.homeItem`), so a row keeps one card shape.
 - The hero uses up to 8 movies and shows with background art, recent rows first (`HomeState`), and
