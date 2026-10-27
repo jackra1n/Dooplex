@@ -98,7 +98,7 @@ header instead.
 | Home shelves, sideways | Compose's default bring-into-view motion |
 | Tab capsule | Spring, damping 1: stiffness 240 to move, 300 to fade |
 | Buttons | Spring, damping 1, stiffness 320; focused buttons grow to 1.07× with a 10 dp shadow |
-| Poster cards | Grow to 1.08× (episodes 1.05×) in 180 ms; a glow in the poster's most vivid colour, a top-lit rim and a gloss fade in over 200 ms, and a shine crosses the card once in 750 ms (`FocusLight.kt`); other titles dim to 70% |
+| Poster cards | Grow to 1.08× (episodes 1.05×) in 180 ms; plx-native's top highlight and top-left lit rim, plus a glow in the poster's most vivid colour, fade in over 160 ms (`FocusLight.kt`); other titles dim to 70% |
 | Title menu | Springs in from the card's side (scale 0.9 → 1, slight overshoot) while the page around the card dims to 55% in 180 ms (`MenuScrim`) |
 | New artwork | Fades in over 220 ms; artwork already in memory appears at once |
 | Page changes | Page dips out in 70 ms, changes while hidden, fades in over 140 ms once drawn; the top bar stays (`PageDip`) |

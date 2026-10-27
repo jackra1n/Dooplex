@@ -108,7 +108,7 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 The focused card's glow is six rounded-rect strokes fading outward, tinted with the poster's most
 vivid colour from the palette the wash already extracts. Android 11 has no `RenderEffect` blur, and
 a blurred bitmap would have to be made per card size on the CPU. Only the focused card draws the
-rings and its one-time shine. Home and the Movies grid measured 0.0% and 0.3% dropped with it.
+rings. Home and the Movies grid measured 0.0% and 0.3% dropped with it.
 
 ## No live blur for "liquid glass"
 

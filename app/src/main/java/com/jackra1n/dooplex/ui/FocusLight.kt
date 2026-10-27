@@ -1,11 +1,8 @@
 package com.jackra1n.dooplex.ui
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,21 +22,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jackra1n.dooplex.artwork.MovieAtmosphere
 
-/** How lit a focused card is: [light] fades its glow and rim, [sweep] runs one shine across it per focus. */
-internal class FocusLight(val light: State<Float>, val sweep: State<Float>) {
+/** How lit a focused card is; [glow] is the poster's colour for the halo around it. */
+internal class FocusLight(val light: State<Float>) {
     var glow by mutableStateOf(Color.White)
 }
 
 @Composable
 internal fun rememberFocusLight(focused: Boolean): FocusLight {
-    val light = animateFloatAsState(if (focused) 1f else 0f, tween(200), label = "focus light")
-    val sweep = remember { Animatable(1f) }
-    LaunchedEffect(focused) {
-        if (!focused) return@LaunchedEffect
-        sweep.snapTo(0f)
-        sweep.animateTo(1f, tween(SWEEP_MS, delayMillis = 90, easing = FastOutSlowInEasing))
-    }
-    return remember { FocusLight(light, sweep.asState()) }
+    val light = animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "focus light")
+    return remember { FocusLight(light) }
 }
 
 /** The poster's most vivid colour, lifted so it glows on the dark page; white when it is unknown. */
@@ -69,38 +60,33 @@ internal fun Modifier.focusGlow(focus: FocusLight, radius: Dp): Modifier = drawB
     }
 }
 
-/** Over the artwork: a rim lit along the top, a top-left gloss, and the shine that crosses once on focus. */
+/** Over the artwork, as plx-native lights a focused tile: a soft top highlight and a rim lit from the top-left. */
 internal fun Modifier.focusSheen(focus: FocusLight, radius: Dp): Modifier = drawWithCache {
-    val rimWidth = 1.5.dp.toPx()
-    val rim = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = 0.95f), 0.18f to Color.White.copy(alpha = 0.35f), 1f to Color.White.copy(alpha = 0.18f),
+    val highlight = Brush.radialGradient(
+        colors = listOf(Color.White.copy(alpha = 0.08f), Color.Transparent),
+        center = Offset(size.width * 0.5f, 0f), radius = size.height.coerceAtLeast(1f),
     )
-    val gloss = Brush.linearGradient(
-        0f to Color.White.copy(alpha = 0.16f), 0.36f to Color.Transparent,
-        start = Offset.Zero, end = Offset(size.width * 0.36f, size.height * 0.94f),
+    val shine = Brush.linearGradient(
+        0f to Color.White.copy(alpha = 0.72f),
+        0.22f to Color.White.copy(alpha = 0.28f),
+        0.58f to Color.White.copy(alpha = 0.07f),
+        1f to Color.White.copy(alpha = 0.20f),
+        start = Offset.Zero, end = Offset(size.width, size.height),
     )
-    val diagonal = size.width + size.height
-    val band = diagonal * 0.22f
-    val corner = CornerRadius((radius.toPx() - rimWidth / 2).coerceAtLeast(0f))
-    val inner = Size(size.width - rimWidth, size.height - rimWidth)
+    val edge = Stroke(1.dp.toPx())
+    val halo = Stroke(3.dp.toPx())
+    val inset = edge.width / 2
+    val outline = Size((size.width - edge.width).coerceAtLeast(0f), (size.height - edge.width).coerceAtLeast(0f))
+    val corner = CornerRadius((radius.toPx() - inset).coerceAtLeast(0f))
     onDrawWithContent {
         drawContent()
         val alpha = focus.light.value
         if (alpha <= 0f) return@onDrawWithContent
-        drawRect(gloss, alpha = alpha)
-        val sweep = focus.sweep.value
-        if (sweep < 1f) {
-            val center = -band + (diagonal + band * 2) * sweep
-            val shine = Brush.linearGradient(
-                0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.26f), 1f to Color.Transparent,
-                start = Offset(center - band, 0f), end = Offset(center, band),
-            )
-            drawRect(shine, alpha = alpha)
-        }
-        drawRoundRect(rim, Offset(rimWidth / 2, rimWidth / 2), inner, corner, alpha = alpha, style = Stroke(rimWidth))
+        drawRect(highlight, alpha = alpha)
+        drawRoundRect(shine, Offset(inset, inset), outline, corner, alpha = alpha * 0.14f, style = halo)
+        drawRoundRect(shine, Offset(inset, inset), outline, corner, alpha = alpha, style = edge)
     }
 }
 
 private val GLOW_SPREAD = 18.dp
 private const val GLOW_RINGS = 6
-private const val SWEEP_MS = 750
