@@ -3,7 +3,9 @@ package com.jackra1n.dooplex.library
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -54,6 +57,7 @@ import com.jackra1n.dooplex.details.MovieDetailsScreen
 import com.jackra1n.dooplex.details.WatchlistButton
 import com.jackra1n.dooplex.details.episodeNumber
 import com.jackra1n.dooplex.plex.PlexBrowseItem
+import com.jackra1n.dooplex.ui.rememberEdgeScroll
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.EpisodeCard
 import com.jackra1n.dooplex.ui.Text
@@ -188,6 +192,7 @@ internal fun ShowPage(
 }
 
 /** Moving along the tabs shows that season after a short pause, so passing over one loads nothing. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeasonTabs(
     state: ShowPageState,
@@ -209,27 +214,30 @@ private fun SeasonTabs(
     LaunchedEffect(selectedIndex) {
         if (selectedIndex >= 0 && row.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) row.scrollToItem(selectedIndex)
     }
-    LazyRow(
-        state = row,
-        contentPadding = PaddingValues(horizontal = 46.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.fillMaxWidth().focusRequester(focus).focusRestorer(current)
-            .focusProperties { this.up = up; this.down = down },
-    ) {
-        itemsIndexed(seasons, key = { _, season -> season.ratingKey }) { index, season ->
-            TextTab(
-                label = season.title,
-                selected = index == selectedIndex,
-                enabled = enabled,
-                modifier = Modifier.then(if (index == selectedIndex) Modifier.focusRequester(current) else Modifier)
-                    .onFocusChanged { if (it.isFocused) focused = season },
-                onClick = { state.selectSeason(season) },
-            )
+    CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeScroll(46.dp)) {
+        LazyRow(
+            state = row,
+            contentPadding = PaddingValues(horizontal = 46.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).focusRestorer(current)
+                .focusProperties { this.up = up; this.down = down },
+        ) {
+            itemsIndexed(seasons, key = { _, season -> season.ratingKey }) { index, season ->
+                TextTab(
+                    label = season.title,
+                    selected = index == selectedIndex,
+                    enabled = enabled,
+                    modifier = Modifier.then(if (index == selectedIndex) Modifier.focusRequester(current) else Modifier)
+                        .onFocusChanged { if (it.isFocused) focused = season },
+                    onClick = { state.selectSeason(season) },
+                )
+            }
         }
     }
 }
 
 /** Opens on the next episode to watch, else the first unwatched one. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Episodes(
     state: ShowPageState,
@@ -262,30 +270,37 @@ private fun Episodes(
             row.layoutInfo.visibleItemsInfo.takeIf { it.isNotEmpty() }?.let { it.first().index to it.last().index }
         }.filterNotNull().distinctUntilChanged().collect { (first, last) -> episodes.requestRange(first, last) }
     }
-    LazyRow(
-        state = row,
-        contentPadding = PaddingValues(horizontal = 56.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        modifier = Modifier.fillMaxWidth().focusRequester(focus).focusRestorer(start).focusProperties { this.up = up },
-    ) {
-        items(count, key = { it }) { index ->
-            val item = episodes.itemAt(index)
-            EpisodeCard(
-                item = item,
-                posters = posters,
-                artworkWidth = artworkWidth,
-                loadArtwork = enabled,
-                enabled = enabled,
-                modifier = Modifier.width(cardWidth).then(if (index == startIndex) Modifier.focusRequester(start) else Modifier),
-                onFocus = { focusedIndex = index },
-                onClick = { if (item != null) state.details.open(item) else episodes.retry() },
-                placeholderLabel = "Episode ${index + 1}",
-                label = item?.let(::episodeNumber),
-            )
+    CompositionLocalProvider(LocalBringIntoViewSpec provides rememberEdgeScroll(56.dp)) {
+        LazyRow(
+            state = row,
+            contentPadding = PaddingValues(horizontal = 56.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).focusRestorer(start).focusProperties { this.up = up },
+        ) {
+            items(count, key = { it }) { index ->
+                val item = episodes.itemAt(index)
+                EpisodeCard(
+                    item = item,
+                    posters = posters,
+                    artworkWidth = artworkWidth,
+                    loadArtwork = enabled,
+                    enabled = enabled,
+                    modifier = Modifier.width(cardWidth).then(if (index == startIndex) Modifier.focusRequester(start) else Modifier),
+                    onFocus = { focusedIndex = index },
+                    onClick = { if (item != null) state.details.open(item) else episodes.retry() },
+                    placeholderLabel = "Episode ${index + 1}",
+                    label = item?.let(::episodeNumber),
+                )
+            }
         }
     }
+    EpisodeSummary { episodes.itemAt(focusedIndex)?.summary.orEmpty() }
+}
+
+@Composable
+private fun EpisodeSummary(summary: () -> String) {
     Text(
-        episodes.itemAt(focusedIndex)?.summary.orEmpty(),
+        summary(),
         color = CinemaColors.Foreground.copy(alpha = 0.8f), fontSize = 15.sp, lineHeight = 22.sp,
         maxLines = 2, overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(horizontal = 56.dp).fillMaxWidth(0.7f).height(44.dp),

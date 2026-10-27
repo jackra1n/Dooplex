@@ -76,6 +76,7 @@ import com.jackra1n.dooplex.details.DetailPlayIcon
 import com.jackra1n.dooplex.details.MovieDetailsScreen
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexBrowseItem
+import com.jackra1n.dooplex.ui.rememberEdgeScroll
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
@@ -215,18 +216,7 @@ internal fun HomeScreen(
                 }
             }
         }
-        // Compose pivots TV focus to 30% of a row; a shelf only scrolls when its card would cross the
-        // page margins, so the first card returns exactly to its resting place.
-        val edgePx = with(density) { edge.toPx() }
-        val rowSpec = remember(edgePx) {
-            object : BringIntoViewSpec {
-                override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = when {
-                    offset < edgePx -> offset - edgePx
-                    offset + size > containerSize - edgePx -> offset + size - (containerSize - edgePx)
-                    else -> 0f
-                }
-            }
-        }
+        val rowSpec = rememberEdgeScroll(edge)
         // Ready once the hero's picture and the first shelf's posters are in memory, so the start
         // screen can lift onto a finished page instead of one that is still filling in.
         LaunchedEffect(state) {
