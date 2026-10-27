@@ -416,6 +416,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         Analytics.event("lifecycle", "destroy" to true, "finishing" to isFinishing, "changing" to isChangingConfigurations)
+        Analytics.onCommand = null
         closeBrowser()
         super.onDestroy()
     }

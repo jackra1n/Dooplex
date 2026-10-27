@@ -53,6 +53,10 @@ internal object Analytics {
     @Volatile private var causeAt = 0L
     @Volatile var screen = ""
 
+    private var frames = 0
+    private var slow = 0
+    private var dropped = 0
+
     private class Sample {
         var count = 0
         var total = 0.0
@@ -61,8 +65,11 @@ internal object Analytics {
 
     fun start(activity: Activity) {
         if (!enabled) return
-        handler = Handler(HandlerThread("analytics").apply { start() }.looper)
-        traceFile = File(activity.cacheDir, "dev.trace")
+        val first = !::handler.isInitialized
+        if (first) {
+            handler = Handler(HandlerThread("analytics").apply { start() }.looper)
+            traceFile = File(activity.cacheDir, "dev.trace")
+        }
         val render = activity.resources.displayMetrics
         val mode = activity.display?.mode
         val refresh = mode?.refreshRate ?: 60f
@@ -76,9 +83,6 @@ internal object Analytics {
             "memoryClassMb" to activity.getSystemService(ActivityManager::class.java).memoryClass,
         )
         val budget = (1_000_000_000L / refresh).toLong()
-        var frames = 0
-        var slow = 0
-        var dropped = 0
         var lastVsync = 0L
         var lastTotal = 0L
         activity.window.addOnFrameMetricsAvailableListener({ _, metrics, _ ->
@@ -114,6 +118,7 @@ internal object Analytics {
                 )
             }
         }, handler)
+        if (!first) return
         var flushes = 0
         handler.postDelayed(object : Runnable {
             override fun run() {
