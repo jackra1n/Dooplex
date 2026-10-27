@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jackra1n.dooplex.artwork.PosterRepository
+import com.jackra1n.dooplex.details.MediaInfoState
 import com.jackra1n.dooplex.home.HomeState
 import com.jackra1n.dooplex.library.CollectionLibraryState
 import com.jackra1n.dooplex.library.ShowBrowseLevel
@@ -22,6 +23,7 @@ import com.jackra1n.dooplex.search.SearchState
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.PageDip
 import com.jackra1n.dooplex.watchlist.WatchlistState
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -45,6 +47,7 @@ internal class Browser(
     private val blocked: () -> Boolean,
     private val onNavigate: () -> Unit,
 ) {
+    private val client = PlexClient(connection)
     private var selection by mutableStateOf(savedSelection)
     val focus = CollectionFocusState()
     var tab by mutableStateOf("home")
@@ -61,6 +64,11 @@ internal class Browser(
     val showHistory = mutableStateListOf<ShowBrowseState>()
     var search by mutableStateOf<SearchState?>(null)
         private set
+    var menu by mutableStateOf<PlexBrowseItem?>(null)
+        private set
+    var mediaInfo by mutableStateOf<MediaInfoState?>(null)
+        private set
+    var message by mutableStateOf<String?>(null)
     private var homeOrigin = false
     private var selectedShowKey: String? = null
     private var pendingMovie: String? = null
@@ -94,7 +102,7 @@ internal class Browser(
     /** Search and Watchlist are peers of Home: their tab shows them, and Back returns to Home. */
     fun openPage(name: String) {
         if (blocked()) return
-        if (name == "search" && search == null) search = SearchState(PlexClient(connection), scope)
+        if (name == "search" && search == null) search = SearchState(client, scope)
         if (name == "watchlist") watchlist.refresh()
         dip.change { show(name) }
     }
@@ -163,6 +171,43 @@ internal class Browser(
         }
     }
 
+    fun openMenu(item: PlexBrowseItem) {
+        if (!blocked()) menu = item
+    }
+
+    fun closeMenu() {
+        menu = null
+    }
+
+    fun showMediaInfo(item: PlexBrowseItem) {
+        menu = null
+        mediaInfo = MediaInfoState(item, client, scope)
+    }
+
+    fun closeMediaInfo() {
+        mediaInfo?.close()
+        mediaInfo = null
+    }
+
+    fun toggleWatchlist(item: PlexBrowseItem) {
+        menu = null
+        watchlist.toggle(item)
+    }
+
+    fun setWatched(item: PlexBrowseItem, watched: Boolean) {
+        menu = null
+        scope.launch {
+            try {
+                client.setWatched(item.ratingKey, watched)
+                refreshWatched(item)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: IOException) {
+                message = failure.message ?: "Plex could not update this title."
+            }
+        }
+    }
+
     fun retry() {
         if (tab == "movie") movies?.retry() else showHistory.lastOrNull()?.retry() ?: shows?.retry()
     }
@@ -203,9 +248,20 @@ internal class Browser(
     }
 
     fun close() {
+        closeMediaInfo()
         closeStates()
         watchlist.close()
         posters.close()
+    }
+
+    private fun refreshWatched(item: PlexBrowseItem) {
+        home.refresh()
+        movies?.refreshItem(item.ratingKey)
+        shows?.refreshItem(item.ratingKey)
+        selectedShowKey?.let { shows?.refreshItem(it) }
+        showHistory.lastOrNull()?.refresh()
+        search?.let { it.type(it.query) }
+        if (tab == "watchlist") watchlist.refresh()
     }
 
     private fun openHome() {

@@ -4,8 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +31,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -69,10 +66,7 @@ internal fun CollectionPosterCard(
         modifier.onFocusChanged {
             focused = it.isFocused
             if (it.isFocused) onFocus()
-        }.clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = null,
-            role = Role.Button, onClick = { if (enabled) onClick() },
-        ).semantics {
+        }.cardClick(item, enabled, onClick).semantics {
             contentDescription = if (item == null) "$placeholderLabel, loading. Select to load this item."
                 else listOfNotNull(item.title, item.subtitle.takeIf { it.isNotBlank() },
                     if (item.watched) "Watched" else if (item.viewOffsetMs > 0) "Partially watched" else null).joinToString(", ")

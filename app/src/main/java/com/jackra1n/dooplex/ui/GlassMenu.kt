@@ -23,6 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -44,9 +49,15 @@ internal fun GlassMenu(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    var armed by remember { mutableStateOf(false) }
     Popup(alignment = alignment, offset = offset, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
-            Modifier.width(width).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp).padding(10.dp),
+            // A held OK that opened the menu keeps repeating; only a fresh press may choose.
+            Modifier.onPreviewKeyEvent {
+                if (it.key != Key.DirectionCenter && it.key != Key.Enter) return@onPreviewKeyEvent false
+                if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount == 0) armed = true
+                !armed
+            }.width(width).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp).padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             content = content,
         )

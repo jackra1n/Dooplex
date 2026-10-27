@@ -6,11 +6,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -66,7 +64,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -83,6 +80,7 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
+import com.jackra1n.dooplex.ui.cardClick
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.rememberGridRowScroller
@@ -482,8 +480,7 @@ private fun EpisodeCard(
         modifier.onFocusChanged {
             focused = it.isFocused
             if (it.isFocused) onFocus()
-        }.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
-            role = Role.Button, onClick = { if (enabled) onClick() })
+        }.cardClick(item, enabled, onClick)
             .semantics { contentDescription = if (item == null) "$placeholderLabel, loading. Select to retry loading."
                 else listOf(item.title, item.subtitle, status).filter { it.isNotBlank() }.joinToString(", ") }
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value },

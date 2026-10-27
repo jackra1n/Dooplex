@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.ui.graphics.ImageBitmap
+import com.jackra1n.dooplex.details.MediaInfoDialog
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.home.HomeScreen
 import com.jackra1n.dooplex.library.CollectionScreen
@@ -13,6 +14,8 @@ import com.jackra1n.dooplex.library.ShowsScreen
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.search.SearchScreen
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
+import com.jackra1n.dooplex.ui.ItemMenu
+import com.jackra1n.dooplex.ui.LocalItemMenu
 import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.watchlist.LocalWatchlist
 import com.jackra1n.dooplex.watchlist.WatchlistScreen
@@ -79,7 +82,7 @@ internal fun BrowserScreen(
         )
     }
     val search = browser.search
-    CompositionLocalProvider(LocalWatchlist provides browser.watchlist) {
+    CompositionLocalProvider(LocalWatchlist provides browser.watchlist, LocalItemMenu provides browser::openMenu) {
         when {
             tab == "search" && search != null -> SearchScreen(
                 state = search, posters = browser.posters, serverName = browser.server.name, navigation = navigation,
@@ -140,6 +143,19 @@ internal fun BrowserScreen(
             }
         }
     }
+    browser.menu?.let { item ->
+        ItemMenu(
+            item = item,
+            watchlisted = browser.watchlist.contains(item.guid)
+                .takeIf { item.guid.startsWith("plex://") && (item.type == "movie" || item.type == "show") },
+            onDismiss = browser::closeMenu,
+            onMediaInfo = { browser.showMediaInfo(item) },
+            onWatched = { browser.setWatched(item, it) },
+            onWatchlist = { browser.toggleWatchlist(item) },
+        )
+    }
+    browser.mediaInfo?.let { MediaInfoDialog(it, browser::closeMediaInfo) }
     // These pages have no error area of their own, so failures there (starting playback) show briefly.
     if (collection == null) error?.let { MessageToast(it, onDismissError) }
+    browser.message?.let { MessageToast(it) { browser.message = null } }
 }
