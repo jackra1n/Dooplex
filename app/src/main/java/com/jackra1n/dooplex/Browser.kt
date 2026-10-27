@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.jackra1n.dooplex.ui.MenuRequest
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.details.MediaInfoState
 import com.jackra1n.dooplex.diagnostics.Analytics
@@ -64,7 +65,7 @@ internal class Browser(
         private set
     var search by mutableStateOf<SearchState?>(null)
         private set
-    var menu by mutableStateOf<PlexBrowseItem?>(null)
+    var menu by mutableStateOf<MenuRequest?>(null)
         private set
     var mediaInfo by mutableStateOf<MediaInfoState?>(null)
         private set
@@ -155,10 +156,10 @@ internal class Browser(
         }
     }
 
-    fun openMenu(item: PlexBrowseItem) {
+    fun openMenu(request: MenuRequest) {
         if (blocked()) return
-        menu = item
-        Analytics.event("menu", "type" to item.type)
+        menu = request
+        Analytics.event("menu", "type" to request.item.type, "anchored" to (request.anchor != null))
     }
 
     fun closeMenu() {
@@ -190,6 +191,20 @@ internal class Browser(
                 throw cancelled
             } catch (failure: IOException) {
                 message = failure.message ?: "Plex could not update this title."
+            }
+        }
+    }
+
+    fun removeFromContinueWatching(item: PlexBrowseItem) {
+        menu = null
+        scope.launch {
+            try {
+                client.removeFromContinueWatching(item.ratingKey)
+                home.leaveContinueWatching(item.ratingKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: IOException) {
+                message = failure.message ?: "Plex could not update Continue Watching."
             }
         }
     }

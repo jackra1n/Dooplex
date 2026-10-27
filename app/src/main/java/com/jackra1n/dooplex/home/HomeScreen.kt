@@ -76,6 +76,11 @@ import com.jackra1n.dooplex.details.DetailPlayIcon
 import com.jackra1n.dooplex.details.MovieDetailsScreen
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexBrowseItem
+import com.jackra1n.dooplex.ui.MenuRequest
+import com.jackra1n.dooplex.ui.LocalItemMenu
+import com.jackra1n.dooplex.plex.PlexHomeRow
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusDirection
 import com.jackra1n.dooplex.ui.rememberEdgeScroll
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
@@ -186,6 +191,16 @@ internal fun HomeScreen(
         focusHero()
         focus.completeContent("home")
     }
+    // A card leaving Continue Watching hands focus to a neighbour first, or focus would fall to the top bar.
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(state.leaving) {
+        val key = state.leaving ?: return@LaunchedEffect
+        if (!heroFocused && focusedCard?.ratingKey == key) {
+            listOf(FocusDirection.Right, FocusDirection.Left, FocusDirection.Down, FocusDirection.Up).firstOrNull(focusManager::moveFocus)
+            withFrameNanos { }
+        }
+        state.dropLeaving()
+    }
     BackHandler(enabled = enabled && selected == null) {
         if (!heroFocused && shown != null) focusHero() else onBack()
     }
@@ -271,28 +286,35 @@ internal fun HomeScreen(
                     }
                 }
                 items(state.rows, key = { it.key }, contentType = { "shelf" }) { row ->
-                    Column(Modifier.padding(top = 12.dp, bottom = 14.dp)) {
-                        Text(row.title, color = CinemaColors.Foreground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = edge, bottom = 12.dp))
-                        CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
-                            LazyRow(
-                                state = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f) }),
-                                contentPadding = PaddingValues(horizontal = edge),
-                                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                                modifier = Modifier.fillMaxWidth().focusRestorer(),
-                            ) {
-                                items(row.items, key = { it.ratingKey }, contentType = { "card" }) { item ->
-                                    CollectionPosterCard(
-                                        item = item,
-                                        posters = posters,
-                                        artworkWidth = artworkWidth,
-                                        loadArtwork = enabled,
-                                        enabled = enabled,
-                                        modifier = Modifier.width(cardWidth),
-                                        onFocus = { focusedCard = item },
-                                        onClick = { open(item) },
-                                        placeholderLabel = item.title,
-                                    )
+                    val menu = LocalItemMenu.current
+                    val rowMenu = remember(menu, row.key) {
+                        if (menu == null || row.key != PlexHomeRow.CONTINUE_WATCHING) menu
+                        else { request: MenuRequest -> menu(request.copy(continueWatching = true)) }
+                    }
+                    CompositionLocalProvider(LocalItemMenu provides rowMenu) {
+                        Column(Modifier.padding(top = 12.dp, bottom = 14.dp)) {
+                            Text(row.title, color = CinemaColors.Foreground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = edge, bottom = 12.dp))
+                            CompositionLocalProvider(LocalBringIntoViewSpec provides rowSpec) {
+                                LazyRow(
+                                    state = rememberLazyListState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f) }),
+                                    contentPadding = PaddingValues(horizontal = edge),
+                                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                                    modifier = Modifier.fillMaxWidth().focusRestorer(),
+                                ) {
+                                    items(row.items, key = { it.ratingKey }, contentType = { "card" }) { item ->
+                                        CollectionPosterCard(
+                                            item = item,
+                                            posters = posters,
+                                            artworkWidth = artworkWidth,
+                                            loadArtwork = enabled,
+                                            enabled = enabled,
+                                            modifier = Modifier.width(cardWidth),
+                                            onFocus = { focusedCard = item },
+                                            onClick = { open(item) },
+                                            placeholderLabel = item.title,
+                                        )
+                                    }
                                 }
                             }
                         }

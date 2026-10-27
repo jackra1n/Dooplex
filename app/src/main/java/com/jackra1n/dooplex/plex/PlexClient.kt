@@ -202,6 +202,15 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
+    /** The server's Continue Watching forgets this title until it is played again. */
+    suspend fun removeFromContinueWatching(ratingKey: String) {
+        withContext(Dispatchers.IO) {
+            requireRatingKey(ratingKey)
+            request("/actions/removeFromContinueWatching", mapOf("ratingKey" to ratingKey),
+                operation = "continue watching", method = "PUT")
+        }
+    }
+
     /** Posters keep cover sizing; logos, which can be transparent, come as PNG with aspect-fit bounds. */
     fun artworkUrl(artworkPath: String, width: Int, height: Int): String {
         val standardArtwork = THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)
@@ -319,7 +328,7 @@ class PlexClient(private val connection: PlexConnection) {
     suspend fun homeRows(): List<PlexHomeRow> = withContext(Dispatchers.IO) {
         val continueWatching = async { hubRows("/hubs/continueWatching", mapOf("count" to HOME_ROW_ITEMS), "continue watching") }
         val others = hubRows("/hubs", mapOf("count" to HOME_ROW_ITEMS, "excludeContinueWatching" to "1"), "home")
-        continueWatching.await() + others
+        continueWatching.await().map { it.copy(key = PlexHomeRow.CONTINUE_WATCHING) } + others
     }
 
     /**
@@ -545,6 +554,7 @@ class PlexClient(private val connection: PlexConnection) {
         sessionId: String? = null,
         lists: Map<String, List<String>> = emptyMap(),
         operation: String,
+        method: String = "GET",
     ): String {
         currentCoroutineContext().ensureActive()
         var http: HttpURLConnection? = null
@@ -552,7 +562,7 @@ class PlexClient(private val connection: PlexConnection) {
             return abortOnCancel({ http?.disconnect() }) {
                 val client = URI(url(path, parameters, lists)).toURL().openConnection() as HttpURLConnection
                 http = client
-                client.requestMethod = "GET"
+                client.requestMethod = method
                 // Never forward credentials to a redirect target, even on a successful HTTP response.
                 client.instanceFollowRedirects = false
                 client.connectTimeout = 8_000
@@ -562,6 +572,11 @@ class PlexClient(private val connection: PlexConnection) {
                 client.setRequestProperty("X-Plex-Token", connection.token)
                 identity.forEach { (name, value) -> client.setRequestProperty(name, value) }
                 if (sessionId != null) client.setRequestProperty("X-Plex-Session-Identifier", sessionId)
+                if (method == "PUT") {
+                    client.doOutput = true
+                    client.setFixedLengthStreamingMode(0)
+                    client.outputStream.close()
+                }
                 val status = client.responseCode
                 currentCoroutineContext().ensureActive()
                 if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {

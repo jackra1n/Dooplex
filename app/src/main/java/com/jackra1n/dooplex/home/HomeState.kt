@@ -45,6 +45,9 @@ class HomeState(val connection: PlexConnection, parentScope: CoroutineScope) {
         private set
     var detailsError by mutableStateOf<String?>(null)
         private set
+    /** A title leaving Continue Watching: the screen moves focus off its card, then calls [dropLeaving]. */
+    var leaving by mutableStateOf<String?>(null)
+        private set
 
     init {
         refresh()
@@ -83,6 +86,19 @@ class HomeState(val connection: PlexConnection, parentScope: CoroutineScope) {
         detailed[item.ratingKey] = details
         heroes = heroes.map { if (it.ratingKey == item.ratingKey) details else it }
         return details
+    }
+
+    fun leaveContinueWatching(ratingKey: String) {
+        leaving = ratingKey
+    }
+
+    fun dropLeaving() {
+        val key = leaving ?: return
+        leaving = null
+        rows = rows.mapNotNull { row ->
+            if (row.key != PlexHomeRow.CONTINUE_WATCHING) row
+            else row.copy(items = row.items.filterNot { it.ratingKey == key }).takeIf { it.items.isNotEmpty() }
+        }
     }
 
     fun selectMovie(movie: PlexBrowseItem) {

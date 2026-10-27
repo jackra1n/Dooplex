@@ -61,7 +61,11 @@ data class PlexBrowseItem(
 )
 
 /** One server-arranged Home shelf, Continue Watching first; empty shelves are never kept. */
-data class PlexHomeRow(val key: String, val title: String, val items: List<PlexBrowseItem>)
+data class PlexHomeRow(val key: String, val title: String, val items: List<PlexBrowseItem>) {
+    companion object {
+        const val CONTINUE_WATCHING = "continueWatching"
+    }
+}
 
 /** Explicit Plex rating badge identity; a generic title rating does not establish its source. */
 data class PlexMediaRating(val source: String, val type: String, val value: Double)

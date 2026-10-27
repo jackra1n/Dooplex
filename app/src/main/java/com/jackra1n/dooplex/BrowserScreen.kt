@@ -135,15 +135,17 @@ internal fun BrowserScreen(
             }
         }
     }
-    browser.menu?.let { item ->
+    browser.menu?.let { request ->
+        val item = request.item
         ItemMenu(
-            item = item,
+            request = request,
             watchlisted = browser.watchlist.contains(item.guid)
                 .takeIf { item.guid.startsWith("plex://") && (item.type == "movie" || item.type == "show") },
             onDismiss = browser::closeMenu,
             onMediaInfo = { browser.showMediaInfo(item) },
             onWatched = { browser.setWatched(item, it) },
             onWatchlist = { browser.toggleWatchlist(item) },
+            onRemoveFromContinueWatching = { browser.removeFromContinueWatching(item) },
         )
     }
     browser.mediaInfo?.let { MediaInfoDialog(it, browser::closeMediaInfo) }
