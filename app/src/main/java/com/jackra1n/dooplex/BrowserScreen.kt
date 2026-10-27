@@ -16,6 +16,7 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.search.SearchScreen
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.ItemMenu
+import com.jackra1n.dooplex.ui.MenuScrim
 import com.jackra1n.dooplex.ui.LocalItemMenu
 import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.watchlist.LocalWatchlist
@@ -135,6 +136,7 @@ internal fun BrowserScreen(
             }
         }
     }
+    MenuScrim(browser.menu?.anchor ?: browser.menuAnchor, visible = browser.menu != null)
     browser.menu?.let { request ->
         val item = request.item
         ItemMenu(

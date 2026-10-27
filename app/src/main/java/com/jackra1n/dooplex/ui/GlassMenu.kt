@@ -1,5 +1,7 @@
 package com.jackra1n.dooplex.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -59,23 +64,32 @@ internal fun GlassMenu(
 internal fun GlassMenu(
     position: PopupPositionProvider,
     width: Dp,
+    origin: TransformOrigin,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        GlassPanel(width, content)
+        GlassPanel(width, content, origin)
     }
 }
 
 @Composable
-private fun GlassPanel(width: Dp, content: @Composable ColumnScope.() -> Unit) {
+private fun GlassPanel(width: Dp, content: @Composable ColumnScope.() -> Unit, origin: TransformOrigin = TransformOrigin(0.5f, 0f)) {
     var armed by remember { mutableStateOf(false) }
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.82f, stiffness = 520f)) }
     Column(
         // A held OK that opened the menu keeps repeating; only a fresh press may choose.
         Modifier.onPreviewKeyEvent {
             if (it.key != Key.DirectionCenter && it.key != Key.Enter) return@onPreviewKeyEvent false
             if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount == 0) armed = true
             !armed
+        }.graphicsLayer {
+            val t = appear.value
+            alpha = (t * 1.6f).coerceAtMost(1f)
+            scaleX = 0.9f + 0.1f * t
+            scaleY = scaleX
+            transformOrigin = origin
         }.width(width).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         content = content,

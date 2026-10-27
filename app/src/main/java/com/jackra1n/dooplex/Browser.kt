@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import com.jackra1n.dooplex.ui.MenuRequest
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.details.MediaInfoState
@@ -156,8 +157,13 @@ internal class Browser(
         }
     }
 
+    /** Where the last menu was opened, so the dim can fade out around that card after it closes. */
+    var menuAnchor: Rect? = null
+        private set
+
     fun openMenu(request: MenuRequest) {
         if (blocked()) return
+        menuAnchor = request.anchor
         menu = request
         Analytics.event("menu", "type" to request.item.type, "anchored" to (request.anchor != null))
     }
