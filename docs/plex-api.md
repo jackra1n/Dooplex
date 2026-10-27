@@ -67,7 +67,11 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
 - Artwork comes from the server's photo transcoder (`/photo/:/transcode`) at its drawn size rounded
   up to a bucket, at most 2,048 px, instead of the full-size original; see
   [poster-pipeline.md](poster-pipeline.md).
-- Show and season children are `/library/metadata/<id>/children`.
+- Show and season children are `/library/metadata/<id>/children`. A single-season show whose
+  server hides seasons lists its episodes there directly.
+- The show page reads `/library/metadata/<show>?includeOnDeck=1`; its `OnDeck` episode is what Play
+  starts. Episodes carry `parentIndex` (season), `index`, `grandparentRatingKey` and
+  `grandparentTitle`, which link them to their show.
 
 ## Playback
 
