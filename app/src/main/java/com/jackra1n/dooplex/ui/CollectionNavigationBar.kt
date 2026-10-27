@@ -33,7 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -212,9 +214,16 @@ internal fun CollectionNavigationBar(
     val focusIndex = tabs.indexOfFirst { it.first == focusedType }
     val selection = rememberCapsule(activeIndex, tabOffsets, tabWidths)
     val highlight = rememberCapsule(focusIndex, tabOffsets, tabWidths)
-    // A 5% safe area at the sides, so the bar is identical on every page.
+    // A 5% safe area at the sides, so the bar is identical on every page. Coming up from the page
+    // lands on the current tab, never on the account bubble just because it is above the content.
     Row(
-        Modifier.fillMaxWidth().padding(start = unit * 96, end = unit * 96, top = unit * 54, bottom = unit * 40),
+        Modifier.fillMaxWidth().padding(start = unit * 96, end = unit * 96, top = unit * 54, bottom = unit * 40)
+            .focusProperties {
+                onEnter = {
+                    if (requestedFocusDirection == FocusDirection.Up) focus.tab(activeType.ifEmpty { "home" }).requestFocus()
+                }
+            }
+            .focusGroup(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
