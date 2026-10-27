@@ -59,6 +59,7 @@ import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.Glass
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.ui.pageFade
 
 /**
  * Search across this server with Dooplex's own keyboard on the left and results on the right. The
@@ -114,7 +115,7 @@ internal fun SearchScreen(
         },
     ) {
         navigation()
-        Row(Modifier.fillMaxSize().padding(start = 56.dp)) {
+        Row(Modifier.fillMaxSize().pageFade().padding(start = 56.dp)) {
             Column(Modifier.width(KEYBOARD_WIDTH)) {
                 QueryLine(state.query)
                 Text(

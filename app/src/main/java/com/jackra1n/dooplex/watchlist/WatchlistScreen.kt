@@ -37,6 +37,7 @@ import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.ui.pageFade
 
 /** The watchlist as a poster grid under the top bar; titles this server lacks are only counted. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -72,7 +73,7 @@ internal fun WatchlistScreen(
     // The bar stays fixed above the grid, so moving up to it never leaves it pressed against the edge.
     Column(Modifier.fillMaxSize().background(CinemaColors.Canvas)) {
         navigation()
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().pageFade()) {
             val edge = 56.dp
             val columns = 7
             val cardWidth = (maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns

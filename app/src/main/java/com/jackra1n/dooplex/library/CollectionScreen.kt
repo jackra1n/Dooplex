@@ -104,6 +104,8 @@ import com.jackra1n.dooplex.ui.TextTab
 import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.rememberGridRowScroller
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.ui.LocalPageDip
+import com.jackra1n.dooplex.ui.pageFade
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
@@ -259,6 +261,8 @@ internal fun CollectionScreen(
         state.closeDetails()
         restoreGrid()
     }
+
+    val dip = LocalPageDip.current
 
     // Behind playback, the page requests no focus.
     val interactive = !playbackRunning
@@ -463,7 +467,7 @@ internal fun CollectionScreen(
             posters = posters,
             artworkWidth = artworkWidth,
             active = !playbackRunning,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().pageFade(),
         )
 
         LaunchedEffect(state, state.generation, columns, artworkWidth, playbackRunning) {
@@ -547,10 +551,10 @@ internal fun CollectionScreen(
                             onSort = { restoreGrid(); sortOpen = true },
                             onSortClose = ::closeSort,
                             onSortChoose = {
-                                state.setSort(it)
+                                dip.change { state.setSort(it) }
                                 closeSort()
                             },
-                            onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
+                            onToggleUnwatched = { restoreGrid(); dip.change { state.setUnwatchedOnly(!state.unwatchedOnly) } },
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) {
                                     gridHasFocus = false
@@ -575,7 +579,7 @@ internal fun CollectionScreen(
                     if (state.total == 0 && !state.loading) {
                         item(key = "collection-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
                             Column(
-                                Modifier.fillMaxWidth().height(emptyHeight),
+                                Modifier.fillMaxWidth().height(emptyHeight).pageFade(),
                                 verticalArrangement = Arrangement.Center,
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
@@ -587,7 +591,7 @@ internal fun CollectionScreen(
                                 Spacer(Modifier.height(24.dp))
                                 if (state.error != null) CinemaButton(onClick = state::retry, enabled = controlsEnabled) { ControlText("Try again") }
                                 else if (state.unwatchedOnly) CinemaButton(
-                                    onClick = { restoreGrid(); state.setUnwatchedOnly(false) }, enabled = controlsEnabled,
+                                    onClick = { restoreGrid(); dip.change { state.setUnwatchedOnly(false) } }, enabled = controlsEnabled,
                                 ) { ControlText("Show all ${state.noun}s") }
                             }
                         }
@@ -610,7 +614,7 @@ internal fun CollectionScreen(
                                 artworkWidth = artworkWidth,
                                 loadArtwork = !playbackRunning && inArtworkRange,
                                 enabled = controlsEnabled,
-                                modifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
+                                modifier = Modifier.pageFade().focusRequester(requester).onPreviewKeyEvent { event ->
                                     val count = if (state.total > 0) state.total else 12
                                     val logicalIndex = pendingFocusIndex ?: index
                                     val column = logicalIndex % columns
@@ -695,7 +699,7 @@ internal fun CollectionScreen(
                     railRestorePending = false
                     state.jumpToLetter(key)
                 },
-                modifier = Modifier.width(railWidth).fillMaxHeight()
+                modifier = Modifier.width(railWidth).fillMaxHeight().pageFade()
                     .graphicsLayer {
                         alpha = railOpacity.value
                         translationX = (1f - railOpacity.value) * 8.dp.toPx()
@@ -805,33 +809,35 @@ internal fun CollectionHeaderChrome(
     // No on-screen back button: the remote's Back already goes back, and it would be one more stop.
     Column(modifier.fillMaxWidth()) {
         navigation()
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(Modifier.pageFade()) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    leading()
+                    if (title.isNotBlank()) Text(
+                        listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" · "),
+                        color = CinemaColors.Muted, fontSize = if (compact) 16.sp else 18.sp,
+                        fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (!compact) actions()
+            }
+            if (compact) {
+                Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    actions()
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                leading()
-                if (title.isNotBlank()) Text(
-                    listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" · "),
-                    color = CinemaColors.Muted, fontSize = if (compact) 16.sp else 18.sp,
-                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+                Text(count, color = CinemaColors.Muted, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                if (!compact && hint != null) Text(hint, color = CinemaColors.Muted.copy(alpha = 0.8f), fontSize = 14.sp)
             }
-            if (!compact) actions()
+            footer()
         }
-        if (compact) {
-            Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                actions()
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(count, color = CinemaColors.Muted, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            if (!compact && hint != null) Text(hint, color = CinemaColors.Muted.copy(alpha = 0.8f), fontSize = 14.sp)
-        }
-        footer()
     }
 }
 

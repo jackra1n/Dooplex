@@ -87,6 +87,7 @@ import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.rememberGridRowScroller
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.ui.pageFade
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -387,7 +388,7 @@ internal fun ShowsScreen(
                 }
                 if (count == 0) {
                     item(key = "show-empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
-                        Column(Modifier.fillMaxWidth().height(if (compact) 140.dp else 250.dp), verticalArrangement = Arrangement.Center,
+                        Column(Modifier.fillMaxWidth().height(if (compact) 140.dp else 250.dp).pageFade(), verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(if (state.error != null) "Couldn't load this collection" else "No ${noun}s here yet",
                                 color = CinemaColors.Foreground, fontSize = if (compact) 21.sp else 28.sp, fontWeight = FontWeight.Medium)
@@ -405,7 +406,7 @@ internal fun ShowsScreen(
                             requesters[index] = requester
                             onDispose { requesters.remove(index) }
                         }
-                        val cardModifier = Modifier.focusRequester(requester).onPreviewKeyEvent { event ->
+                        val cardModifier = Modifier.pageFade().focusRequester(requester).onPreviewKeyEvent { event ->
                             if (!enabled) false
                             else if (revealHeader && event.key == Key.DirectionUp) true
                             else {

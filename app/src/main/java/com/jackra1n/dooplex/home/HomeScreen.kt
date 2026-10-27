@@ -81,6 +81,7 @@ import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.ui.pageFade
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -252,16 +253,16 @@ internal fun HomeScreen(
             posters = posters,
             artworkWidth = artworkWidth,
             active = enabled,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().pageFade(),
         )
-        HeroArt(shown, posters, Modifier.fillMaxSize().graphicsLayer {
+        HeroArt(shown, posters, Modifier.fillMaxSize().pageFade().graphicsLayer {
             translationY = if (listState.firstVisibleItemIndex == 0) -listState.firstVisibleItemScrollOffset.toFloat() else -heroHeightPx * 2
         })
         CompositionLocalProvider(LocalBringIntoViewSpec provides shelfSpec) {
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(bottom = 64.dp),
-                modifier = Modifier.fillMaxSize().focusRequester(content).focusRestorer(),
+                modifier = Modifier.fillMaxSize().pageFade().focusRequester(content).focusRestorer(),
             ) {
                 item(key = "hero", contentType = "hero") {
                     Box(Modifier.fillMaxWidth().height(heroHeight).onFocusChanged { heroFocused = it.hasFocus }) {
