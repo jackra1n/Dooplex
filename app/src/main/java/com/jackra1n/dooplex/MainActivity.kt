@@ -51,7 +51,6 @@ import com.jackra1n.dooplex.setup.PlexBrowserScreen
 import com.jackra1n.dooplex.setup.PlexBrowserState
 import com.jackra1n.dooplex.setup.StartScreen
 import com.jackra1n.dooplex.ui.CollectionFocusState
-import com.jackra1n.dooplex.ui.CollectionLibraryDialog
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.KeptScreen
 import com.jackra1n.dooplex.ui.MessageToast
@@ -85,7 +84,6 @@ class MainActivity : ComponentActivity() {
     private var serverName = ""
     private var navigationSelection by mutableStateOf(PlexNavigationSelection())
     private val collectionFocus = CollectionFocusState()
-    private var choosingLibraryType by mutableStateOf<String?>(null)
     private var pendingMovie: String? = null
     private var pendingShow: ShowBrowseState? = null
     private var playingDurationMs = 0L
@@ -223,21 +221,6 @@ class MainActivity : ComponentActivity() {
                     }
                     // Home has no error area of its own, so failures there (starting playback) show briefly.
                     if (home != null) state.error?.let { MessageToast(it) { state = state.copy(error = null) } }
-                    choosingLibraryType?.let { type ->
-                        CollectionLibraryDialog(
-                            libraries = state.libraries.filter { it.type == type },
-                            selectedKey = navigationSelection.libraryFor(state.libraries, type)?.key,
-                            onDismiss = {
-                                choosingLibraryType = null
-                                collectionFocus.moveTab(type)
-                            },
-                            onChoose = {
-                                choosingLibraryType = null
-                                collectionFocus.enterContent(type)
-                                selectLibrary(it)
-                            },
-                        )
-                    }
                 } else {
                     LaunchedEffect(state.stage) {
                         Analytics.screen = state.stage.name.lowercase()
@@ -338,7 +321,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun reopenLibrary(type: String) {
-        val library = navigationSelection.libraryFor(state.libraries, type) ?: return
+        val library = libraryOf(type) ?: return
         if (type == "movie") closeMovies() else closeShows()
         collectionFocus.enterContent(type)
         openLibrary(library)
@@ -430,10 +413,10 @@ class MainActivity : ComponentActivity() {
 
     /** The saved libraries are built hidden behind the start screen, so even the first switch is instant. */
     private fun prepareLibraries(selected: PlexConnection) {
-        navigationSelection.libraryFor(state.libraries, "movie")?.let {
+        libraryOf("movie")?.let {
             movieLibrary = CollectionLibraryState(it, selected, lifecycleScope)
         }
-        navigationSelection.libraryFor(state.libraries, "show")?.let {
+        libraryOf("show")?.let {
             showLibrary = CollectionLibraryState(it, selected, lifecycleScope)
         }
     }
@@ -455,7 +438,7 @@ class MainActivity : ComponentActivity() {
         val selected = connection ?: return
         val path = item.childrenPath ?: return
         val library = state.libraries.firstOrNull { it.type == "show" && it.key == item.libraryKey }
-            ?: navigationSelection.libraryFor(state.libraries, "show") ?: return
+            ?: libraryOf("show") ?: return
         if (showLibrary?.library?.key != library.key) {
             closeShows()
             showLibrary = CollectionLibraryState(library, selected, lifecycleScope)
@@ -516,11 +499,14 @@ class MainActivity : ComponentActivity() {
         state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
     }
 
+    /** The remembered library of a type, or the server's first one; the library page can switch it. */
+    private fun libraryOf(type: String): PlexLibrary? =
+        navigationSelection.libraryFor(state.libraries, type) ?: state.libraries.firstOrNull { it.type == type }
+
     /** Labels come from resolved libraries, never from type names; routes remain keyed by IDs. */
     private fun collectionLabel(type: String): String? =
         (if (type == "movie") movieLibrary?.library else showLibrary?.library)?.title
-            ?: navigationSelection.libraryFor(state.libraries, type)?.title
-            ?: state.libraries.firstOrNull { it.type == type }?.title
+            ?: libraryOf(type)?.title
 
     private fun selectHeaderLibrary(library: PlexLibrary) {
         if (PlaybackMonitor.state.value.running || state.busy) return
@@ -533,8 +519,7 @@ class MainActivity : ComponentActivity() {
 
     private fun selectCollection(type: String) {
         if (PlaybackMonitor.state.value.running || state.busy || !showingHome && activeLibrary?.type == type) return
-        val library = navigationSelection.libraryFor(state.libraries, type)
-        if (library != null) selectLibrary(library) else choosingLibraryType = type
+        selectLibrary(libraryOf(type) ?: return)
     }
 
     /** A shared root card opens the child-only stack; it never opens movie details. */
@@ -669,7 +654,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun closeCollections() {
-        choosingLibraryType = null
         closeMovies()
         closeShows()
         activeLibrary = null
