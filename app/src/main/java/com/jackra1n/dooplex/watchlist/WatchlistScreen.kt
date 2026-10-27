@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,7 +37,6 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
-import com.jackra1n.dooplex.ui.bleed
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** The watchlist as a poster grid under the top bar; titles this server lacks are only counted. */
@@ -72,53 +70,56 @@ internal fun WatchlistScreen(
     }
     BackHandler(enabled = enabled && selected == null, onBack = onBack)
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(CinemaColors.Canvas)) {
-        val edge = 56.dp
-        val columns = 7
-        val cardWidth = (maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns
-        val artworkWidth = artworkBucket(with(LocalDensity.current) { cardWidth.toPx() })
-        val minimal = remember { object : BringIntoViewSpec {} }
-        CompositionLocalProvider(LocalBringIntoViewSpec provides minimal) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columns),
-                contentPadding = PaddingValues(start = edge, end = edge, bottom = 64.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column {
-                        Box(Modifier.bleed(start = edge, end = edge)) { navigation() }
-                        Text("Watchlist", color = CinemaColors.Foreground, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            when {
-                                state.loading -> "Loading your watchlist…"
-                                state.error != null -> state.error!!
-                                state.items.isEmpty() && state.missing == 0 ->
-                                    "Nothing here yet. Add movies and shows to your watchlist in any Plex app."
-                                state.missing > 0 -> "${state.missing} more on your watchlist ${if (state.missing == 1) "isn't" else "aren't"} on $serverName."
-                                else -> "${state.items.size} ${if (state.items.size == 1) "title" else "titles"}"
-                            },
-                            color = if (state.error != null) CinemaColors.Error else CinemaColors.Muted,
-                            fontSize = 18.sp, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
-                        )
-                        if (state.error != null) CinemaButton(onClick = state::refresh, modifier = Modifier.focusRequester(retry)) {
-                            Text("Try again", fontSize = 16.sp)
+    // The bar stays fixed above the grid, so moving up to it never leaves it pressed against the edge.
+    Column(Modifier.fillMaxSize().background(CinemaColors.Canvas)) {
+        navigation()
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val edge = 56.dp
+            val columns = 7
+            val cardWidth = (maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns
+            val artworkWidth = artworkBucket(with(LocalDensity.current) { cardWidth.toPx() })
+            val minimal = remember { object : BringIntoViewSpec {} }
+            CompositionLocalProvider(LocalBringIntoViewSpec provides minimal) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    contentPadding = PaddingValues(start = edge, end = edge, bottom = 64.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column {
+                            Text("Watchlist", color = CinemaColors.Foreground, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                when {
+                                    state.loading -> "Loading your watchlist…"
+                                    state.error != null -> state.error!!
+                                    state.items.isEmpty() && state.missing == 0 ->
+                                        "Nothing here yet. Add movies and shows to your watchlist in any Plex app."
+                                    state.missing > 0 -> "${state.missing} more on your watchlist ${if (state.missing == 1) "isn't" else "aren't"} on $serverName."
+                                    else -> "${state.items.size} ${if (state.items.size == 1) "title" else "titles"}"
+                                },
+                                color = if (state.error != null) CinemaColors.Error else CinemaColors.Muted,
+                                fontSize = 18.sp, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
+                            )
+                            if (state.error != null) CinemaButton(onClick = state::refresh, modifier = Modifier.focusRequester(retry)) {
+                                Text("Try again", fontSize = 16.sp)
+                            }
                         }
                     }
-                }
-                itemsIndexed(state.items, key = { _, item -> item.ratingKey }) { index, item ->
-                    CollectionPosterCard(
-                        item = item,
-                        posters = posters,
-                        artworkWidth = artworkWidth,
-                        loadArtwork = enabled,
-                        enabled = enabled,
-                        modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(first) else Modifier),
-                        onFocus = {},
-                        onClick = { if (item.type == "movie") state.details.open(item) else onOpen(item) },
-                        placeholderLabel = item.title,
-                    )
+                    itemsIndexed(state.items, key = { _, item -> item.ratingKey }) { index, item ->
+                        CollectionPosterCard(
+                            item = item,
+                            posters = posters,
+                            artworkWidth = artworkWidth,
+                            loadArtwork = enabled,
+                            enabled = enabled,
+                            modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(first) else Modifier),
+                            onFocus = {},
+                            onClick = { if (item.type == "movie") state.details.open(item) else onOpen(item) },
+                            placeholderLabel = item.title,
+                        )
+                    }
                 }
             }
         }
