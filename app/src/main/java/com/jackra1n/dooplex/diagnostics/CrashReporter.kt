@@ -44,11 +44,13 @@ internal object CrashReporter {
             }
             previous?.uncaughtException(crashed, error)
         }
-        // Waiting here lets an app that crashes right after launch still deliver the previous crash.
-        thread(name = "crash-reporter") {
-            if (pending.exists() && send(url, pending.readText())) pending.delete()
+        // Waiting for a pending crash lets an app that crashes right after launch still deliver it.
+        val crashed = pending.exists()
+        val sender = thread(name = "crash-reporter") {
+            if (crashed && send(url, pending.readText())) pending.delete()
             reportPreviousExits(context, url)
-        }.join(STARTUP_WAIT_MS)
+        }
+        if (crashed) sender.join(STARTUP_WAIT_MS)
     }
 
     private fun reportPreviousExits(context: Context, url: String) {
