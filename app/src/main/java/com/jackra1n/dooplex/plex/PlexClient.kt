@@ -202,11 +202,12 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
-    /** Posters retain cover sizing; clear logos use transparent PNG with aspect-fit bounds. */
+    /** Posters keep cover sizing; logos, which can be transparent, come as PNG with aspect-fit bounds. */
     fun artworkUrl(artworkPath: String, width: Int, height: Int): String {
         val standardArtwork = THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)
-        val logo = !standardArtwork && PlexSourceMetadata.isLogoPath(artworkPath)
-        require(standardArtwork || logo) {
+        val hosted = !standardArtwork && PlexSourceMetadata.isLogoPath(artworkPath)
+        val logo = hosted && TRANSPARENT.containsMatchIn(artworkPath)
+        require(standardArtwork || hosted) {
             "A safe Plex movie artwork path is required."
         }
         require(width in 1..MAX_ARTWORK_DIMENSION && height in 1..MAX_ARTWORK_DIMENSION) {
@@ -634,6 +635,7 @@ class PlexClient(private val connection: PlexConnection) {
         val PART_KEY = Regex("/library/parts/[0-9]+/[0-9]+/file(?:\\.[A-Za-z0-9_-]+)?")
         val THUMB_PATH = Regex("/library/metadata/[0-9]+/thumb(?:/[0-9]+)?")
         val ART_PATH = Regex("/library/metadata/[0-9]+/art(?:/[0-9]+)?")
+        val TRANSPARENT = Regex("/clearLogo(?:/[0-9]+)?$|\\.(?:png|webp)$")
         val BROWSE_TYPES = setOf("movie", "show", "season", "episode")
         const val HOME_ROW_ITEMS = "24"
         val SEARCH_KINDS = listOf("movie", "show", "episode")
