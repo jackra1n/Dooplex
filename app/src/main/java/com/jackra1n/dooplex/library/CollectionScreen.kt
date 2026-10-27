@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -437,6 +438,8 @@ internal fun CollectionScreen(
         }
         val emptyHeight = (maxHeight - 180.dp).coerceAtLeast(260.dp)
         val controlsEnabled = !playbackRunning && !modalOpen
+        // Read when a key arrives, so a modal opening does not recompose every card.
+        val controls by rememberUpdatedState(controlsEnabled)
         val lastIndex = (if (state.total > 0) state.total else 12) - 1
         // Derived so a focus move only recomposes this screen when the rail actually appears or hides.
         val showAlphabet by remember(columns, lastIndex, controlsEnabled) {
@@ -547,7 +550,7 @@ internal fun CollectionScreen(
                             onLibrary = onLibrary,
                             error = error,
                             compact = compact,
-                            enabled = controlsEnabled,
+                            enabled = !playbackRunning,
                             sortFocus = sortFocus,
                             sortOpen = sortOpen,
                             onSort = { restoreGrid(); sortOpen = true },
@@ -560,18 +563,18 @@ internal fun CollectionScreen(
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) {
                                     gridHasFocus = false
-                                    if (controlsEnabled && focus.navigationType == null) revealHeader()
+                                    if (controls && focus.navigationType == null) revealHeader()
                                 } else if (restoreToHeader && !needsFocus) {
                                     restoreToHeader = false
                                     directionalFocus = false
                                     restoreEpoch++
                                 }
                             }.onPreviewKeyEvent { event ->
-                                if (controlsEnabled && focus.navigationType == null && event.key == Key.DirectionDown) {
+                                if (controls && focus.navigationType == null && event.key == Key.DirectionDown) {
                                     if (event.type == KeyEventType.KeyDown) restoreGrid()
                                     true
                                 } else {
-                                    if (controlsEnabled && event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown)
+                                    if (controls && event.key == Key.DirectionUp && event.type == KeyEventType.KeyDown)
                                         revealHeader()
                                     false
                                 }
@@ -591,9 +594,9 @@ internal fun CollectionScreen(
                                 Text(state.error ?: if (state.unwatchedOnly) "Turn off Unwatched to see your whole collection." else "${state.title} added to this Plex library will appear here.",
                                     color = CinemaColors.Muted, fontSize = 18.sp, modifier = Modifier.widthIn(max = 600.dp))
                                 Spacer(Modifier.height(24.dp))
-                                if (state.error != null) CinemaButton(onClick = state::retry, enabled = controlsEnabled) { ControlText("Try again") }
+                                if (state.error != null) CinemaButton(onClick = state::retry, enabled = controls) { ControlText("Try again") }
                                 else if (state.unwatchedOnly) CinemaButton(
-                                    onClick = { restoreGrid(); dip.change { state.setUnwatchedOnly(false) } }, enabled = controlsEnabled,
+                                    onClick = { restoreGrid(); dip.change { state.setUnwatchedOnly(false) } }, enabled = controls,
                                 ) { ControlText("Show all ${state.noun}s") }
                             }
                         }
@@ -615,27 +618,27 @@ internal fun CollectionScreen(
                                 posters = posters,
                                 artworkWidth = artworkWidth,
                                 loadArtwork = !playbackRunning && inArtworkRange,
-                                enabled = controlsEnabled,
+                                enabled = !playbackRunning,
                                 modifier = Modifier.pageFade().focusRequester(requester).onPreviewKeyEvent { event ->
                                     val count = if (state.total > 0) state.total else 12
                                     val logicalIndex = pendingFocusIndex ?: index
                                     val column = logicalIndex % columns
                                     val rowEnd = column == columns - 1 || logicalIndex == count - 1
-                                    if (controlsEnabled && restoreToHeader && event.key == Key.DirectionUp) {
+                                    if (controls && restoreToHeader && event.key == Key.DirectionUp) {
                                         // Repeats can still reach the old poster before header focus attaches.
                                         true
-                                    } else if (event.key == Key.DirectionRight && rowEnd && controlsEnabled) {
+                                    } else if (event.key == Key.DirectionRight && rowEnd && controls) {
                                         if (event.type == KeyEventType.KeyDown) enterAlphabet()
                                         true
-                                    } else if (controlsEnabled && event.key == Key.DirectionDown) {
+                                    } else if (controls && event.key == Key.DirectionDown) {
                                         val nextRow = (logicalIndex / columns + 1) * columns
                                         if (event.type == KeyEventType.KeyDown && nextRow < count)
                                             movePosterFocus((logicalIndex + columns).coerceAtMost(count - 1))
                                         true
-                                    } else if (controlsEnabled && event.key == Key.DirectionUp && logicalIndex >= columns) {
+                                    } else if (controls && event.key == Key.DirectionUp && logicalIndex >= columns) {
                                         if (event.type == KeyEventType.KeyDown) movePosterFocus(logicalIndex - columns)
                                         true
-                                    } else if (controlsEnabled && event.key == Key.DirectionUp && pendingFocusIndex != null) {
+                                    } else if (controls && event.key == Key.DirectionUp && pendingFocusIndex != null) {
                                         if (event.type == KeyEventType.KeyDown) {
                                             pendingFocusIndex = null
                                             directionalFocus = true
@@ -644,7 +647,7 @@ internal fun CollectionScreen(
                                             restoreEpoch++
                                         }
                                         true
-                                    } else if (controlsEnabled && pendingFocusIndex != null &&
+                                    } else if (controls && pendingFocusIndex != null &&
                                         (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)) {
                                         val target = if (event.key == Key.DirectionLeft && column > 0) logicalIndex - 1
                                             else if (event.key == Key.DirectionRight && !rowEnd) logicalIndex + 1 else logicalIndex
@@ -653,7 +656,7 @@ internal fun CollectionScreen(
                                     } else false
                                 },
                                 onFocus = {
-                                    if (controlsEnabled && !needsFocus && pendingFocusIndex == null) focusedIndex = index
+                                    if (controls && !needsFocus && pendingFocusIndex == null) focusedIndex = index
                                     gridHasFocus = true
                                     railRestorePending = false
                                 },

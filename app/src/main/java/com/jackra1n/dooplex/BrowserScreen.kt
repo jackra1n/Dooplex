@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.ui.graphics.ImageBitmap
 import com.jackra1n.dooplex.details.MediaInfoDialog
@@ -122,7 +123,7 @@ internal fun BrowserScreen(
                         posters = browser.posters,
                         navigation = navigation,
                         focus = focus,
-                        libraries = browser.libraries.filter { it.type == tab },
+                        libraries = remember(browser.libraries, tab) { browser.libraries.filter { it.type == tab } },
                         onLibrary = browser::selectHeaderLibrary,
                         playbackRunning = blocked,
                         error = error,
