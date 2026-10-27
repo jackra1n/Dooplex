@@ -14,7 +14,7 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   every frame. Bug fixed 2026-10-27: it used to scroll only when the hero was already partly
   visible, so a fast burst of Up presses reached the hero while the page was still rows down, and
   the hero stayed off screen.
-- **Each shelf (`rowSpec`)** scrolls sideways only when the focused card would cross the 56 dp page
+- **Each shelf (`rememberEdgeScroll`)** scrolls sideways only when the focused card would cross the 56 dp page
   margins. With the default pivot, moving Up and Down between shelves also scrolled them sideways.
   An earlier spec that ignored `contentPadding` left the first poster cut off after scrolling right
   and back left.
@@ -54,6 +54,8 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   `graphicsLayer` translation, not a scroll, so bring-into-view never fights it.
 - **Season tabs select on focus** after a 250 ms pause, so passing over a tab loads nothing.
 - **Both rows use `focusRestorer`**, so returning to a row finds the card it left.
+- **Both rows scroll only at their edges** (`rememberEdgeScroll`), like Home's shelves, so the card
+  the row opened on stays where it was placed.
 
 ## Focus must never be dropped
 

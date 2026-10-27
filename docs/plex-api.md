@@ -16,11 +16,21 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
   `MainActivity.linkAccount` makes up to 4 codes in turn, then shows an error with a "Try again"
   button, so an unattended sign-in screen stops polling eventually.
 
+## Connecting to a server
+
+- plex.tv's resource list gives each server several addresses (local, remote, relay). Dooplex asks
+  every direct address for `/identity` at once and takes the first that answers with the server's
+  `machineIdentifier`; relays are tried only if none does. One at a time, a single dead address
+  cost the 8 s connect timeout.
+- A cancelled request closes its connection (`abortOnCancel`). A blocking socket read ignores
+  coroutine cancellation and would otherwise hold one of a list's two request slots until the
+  server answered.
+
 ## Home
 
 - `GET /hubs/continueWatching?count=24` gives the Continue Watching row.
 - `GET /hubs?count=24&excludeContinueWatching=1` gives the other rows, without repeating Continue
-  Watching. Hub items arrive embedded in the response.
+  Watching. Hub items arrive embedded in the response. Both requests run at once.
 - Episodes in a hub are shown with their show's poster, and seasons fall back to it when they have
   none (`PlexClient.homeItem`), so a row keeps one card shape.
 - The hero uses up to 8 movies and shows with background art, recent rows first (`HomeState`), and
@@ -66,7 +76,8 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
   responses are capped at 4 MiB.
 - Artwork comes from the server's photo transcoder (`/photo/:/transcode`) at its drawn size rounded
   up to a bucket, at most 2,048 px, instead of the full-size original; see
-  [poster-pipeline.md](poster-pipeline.md).
+  [poster-pipeline.md](poster-pipeline.md). Only logos (`clearLogo`, or a hosted `.png`/`.webp`)
+  come as PNG; a hosted watchlist poster comes as JPEG like any other.
 - Show and season children are `/library/metadata/<id>/children`. A single-season show whose
   server hides seasons lists its episodes there directly.
 - The show page reads `/library/metadata/<show>?includeOnDeck=1`; its `OnDeck` episode is what Play

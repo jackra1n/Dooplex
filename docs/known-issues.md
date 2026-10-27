@@ -43,3 +43,7 @@ a CPU copy of every poster next to its GPU texture. Screens are no longer kept (
 bitmaps stay for smooth scrolling. See [performance-decisions.md](performance-decisions.md).
 
 **Status:** about 250 MB after visiting every tab (2026-10-27, after the kept-screen removal). Watch it if Android starts killing Dooplex while the player runs.
+When Android reports memory pressure (`onTrimMemory` at `RUNNING_LOW` or worse, or `BACKGROUND`
+and above), `MainActivity` drops the decoded poster cache and the washes; cards on screen keep
+their own bitmaps. Being merely hidden behind the player (`UI_HIDDEN`) clears nothing, or every
+return would reload the posters. Analytics logs each call as a `lifecycle` event with `trim`.
