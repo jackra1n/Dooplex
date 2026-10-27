@@ -14,9 +14,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -28,13 +25,6 @@ import androidx.lifecycle.lifecycleScope
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.artwork.clearWashes
 import com.jackra1n.dooplex.diagnostics.Analytics
-import com.jackra1n.dooplex.home.HomeScreen
-import com.jackra1n.dooplex.home.HomeState
-import com.jackra1n.dooplex.library.CollectionLibraryState
-import com.jackra1n.dooplex.library.CollectionScreen
-import com.jackra1n.dooplex.library.ShowBrowseLevel
-import com.jackra1n.dooplex.library.ShowBrowseState
-import com.jackra1n.dooplex.library.ShowsScreen
 import com.jackra1n.dooplex.playback.PlaybackMonitor
 import com.jackra1n.dooplex.playback.PlaybackService
 import com.jackra1n.dooplex.playback.PlayerHandoff
@@ -44,29 +34,19 @@ import com.jackra1n.dooplex.plex.PlexAccountStore
 import com.jackra1n.dooplex.plex.PlexAuthenticationException
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexClient
-import com.jackra1n.dooplex.plex.PlexConnection
-import com.jackra1n.dooplex.plex.PlexLibrary
-import com.jackra1n.dooplex.plex.PlexNavigationSelection
 import com.jackra1n.dooplex.plex.PlexNavigationStore
 import com.jackra1n.dooplex.plex.PlexServer
-import com.jackra1n.dooplex.search.SearchScreen
-import com.jackra1n.dooplex.search.SearchState
 import com.jackra1n.dooplex.setup.BrowserStage
 import com.jackra1n.dooplex.setup.PlexBrowserScreen
 import com.jackra1n.dooplex.setup.PlexBrowserState
 import com.jackra1n.dooplex.setup.StartScreen
-import com.jackra1n.dooplex.ui.CollectionFocusState
-import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.LocalPageDip
-import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.ui.PageDip
 import com.jackra1n.dooplex.ui.theme.DooplexTheme
-import com.jackra1n.dooplex.watchlist.WatchlistScreen
 import com.jackra1n.dooplex.watchlist.WatchlistState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -76,28 +56,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var accountClient: PlexAccountClient
     private var account: PlexAccount? = null
     private var accountAvatar by mutableStateOf<ImageBitmap?>(null)
-    private var connection: PlexConnection? = null
-    private var movieLibrary by mutableStateOf<CollectionLibraryState?>(null)
-    private var showLibrary by mutableStateOf<CollectionLibraryState?>(null)
-    private var selectedShowKey: String? = null
-    private var activeLibrary by mutableStateOf<PlexLibrary?>(null)
-    private var homeState by mutableStateOf<HomeState?>(null)
-    private var homeOrigin = false
+    private var browser by mutableStateOf<Browser?>(null)
     private var splash by mutableStateOf(true)
-    private var homeReady by mutableStateOf(false)
-    private var homeEpoch by mutableIntStateOf(0)
-    private var tab by mutableStateOf("home")
-    private var searchState by mutableStateOf<SearchState?>(null)
-    private var watchlistState by mutableStateOf<WatchlistState?>(null)
-    private val showHistory = mutableStateListOf<ShowBrowseState>()
-    private var posterRepository: PosterRepository? = null
-    private var serverId: String? = null
-    private var serverName = ""
-    private var navigationSelection by mutableStateOf(PlexNavigationSelection())
-    private val collectionFocus = CollectionFocusState()
     private val pageDip by lazy { PageDip(lifecycleScope) }
-    private var pendingMovie: String? = null
-    private var pendingShow: ShowBrowseState? = null
     private var playingDurationMs = 0L
     private var actionJob: Job? = null
     private var actionVersion = 0
@@ -128,116 +89,21 @@ class MainActivity : ComponentActivity() {
             val destinations = rememberSaveableStateHolder()
             DooplexTheme {
                 CompositionLocalProvider(LocalPageDip provides pageDip) {
-                    val posters = posterRepository
-                    val home = homeState.takeIf { tab == "home" }
-                    val collection = when (tab) {
-                        "movie" -> movieLibrary
-                        "show" -> showLibrary
-                        else -> null
-                    }
-                    val child = showHistory.lastOrNull().takeIf { collection != null && tab == "show" }
-                    val search = searchState.takeIf { tab == "search" }
-                    val watchlist = watchlistState.takeIf { tab == "watchlist" }
-                    if (state.stage == BrowserStage.TITLES && posters != null && (home ?: collection ?: search ?: watchlist) != null) {
-                        val blocked = playback.running || state.busy
-                        val route = when {
-                            child != null -> "show:${child.path}"
-                            collection != null -> "library:${collection.library.key}"
-                            else -> tab
-                        }
-                        val screen = when {
-                            home != null -> if (home.selectedMovie != null) "home/details" else "home"
-                            child != null -> "show/${child.level.name.lowercase()}"
-                            collection != null -> "library/$tab" + if (collection.selectedMovie != null) "/details" else ""
-                            else -> tab
-                        }
-                        LaunchedEffect(screen) {
-                            Analytics.screen = screen
-                            Analytics.mark("screen:$screen")
-                            Analytics.event("screen")
-                        }
-                        val navigation: @Composable () -> Unit = {
-                            CollectionNavigationBar(
-                                accountName = state.accountName,
-                                accountAvatar = accountAvatar,
-                                serverName = serverName,
-                                activeType = tab,
-                                movieTitle = collectionLabel("movie"),
-                                showTitle = collectionLabel("show"),
-                                focus = collectionFocus,
-                                enabled = !blocked && movieLibrary?.selectedMovie == null && homeState?.selectedMovie == null &&
-                                    searchState?.details?.movie == null && watchlistState?.details?.movie == null,
-                                onHome = ::showHome,
-                                onMovies = { selectCollection("movie") },
-                                onShows = { selectCollection("show") },
-                                onWatchlist = { openPage("watchlist") },
-                                onSearch = { openPage("search") },
-                                onDown = { collectionFocus.enterHeader(route) },
-                                onSwitchServer = ::showServerPicker,
-                                onSignOut = ::signOut,
-                            )
-                        }
-                        when {
-                            search != null -> SearchScreen(
-                                state = search, posters = posters, serverName = serverName, navigation = navigation,
-                                focus = collectionFocus, enabled = !blocked,
-                                onPlay = ::play, onOpen = ::openFromHome, onBack = ::goHome,
-                            )
-                            watchlist != null -> WatchlistScreen(
-                                state = watchlist, posters = posters, serverName = serverName, navigation = navigation,
-                                focus = collectionFocus, enabled = !blocked,
-                                onPlay = ::play, onOpen = ::openFromHome, onBack = ::goHome,
-                            )
-                            home != null -> key(home) {
-                                destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
-                                    HomeScreen(
-                                        state = home,
-                                        posters = posters,
-                                        navigation = navigation,
-                                        focus = collectionFocus,
-                                        enabled = !blocked,
-                                        onPlay = ::play,
-                                        onOpen = ::openFromHome,
-                                        onBack = ::leaveApp,
-                                        onReady = {
-                                            homeReady = true
-                                            Analytics.event("ready", "what" to "home")
-                                        },
-                                    )
-                                }
-                            }
-                            child != null -> destinations.SaveableStateProvider("$serverId:show:${child.path}") {
-                                ShowsScreen(
-                                    state = child,
-                                    posters = posters,
-                                    enabled = !blocked,
-                                    error = state.error,
-                                    onBack = ::navigateBack,
-                                    onItem = ::selectShowItem,
-                                    navigation = navigation,
-                                    focus = collectionFocus,
-                                )
-                            }
-                            collection != null -> key(collection) {
-                                destinations.SaveableStateProvider("$serverId:$tab:${collection.library.key}") {
-                                    CollectionScreen(
-                                        state = collection,
-                                        posters = posters,
-                                        navigation = navigation,
-                                        focus = collectionFocus,
-                                        libraries = state.libraries.filter { it.type == tab },
-                                        onLibrary = ::selectHeaderLibrary,
-                                        playbackRunning = blocked,
-                                        error = state.error,
-                                        onBack = ::goHome,
-                                        onPlay = ::play,
-                                        onOpenShow = ::openShow,
-                                    )
-                                }
-                            }
-                        }
-                        // These pages have no error area of their own, so failures there (starting playback) show briefly.
-                        if (home != null || search != null || watchlist != null) state.error?.let { MessageToast(it) { state = state.copy(error = null) } }
+                    val current = browser
+                    if (state.stage == BrowserStage.TITLES && current != null) {
+                        BrowserScreen(
+                            browser = current,
+                            destinations = destinations,
+                            blocked = playback.running || state.busy,
+                            error = state.error,
+                            accountName = state.accountName,
+                            accountAvatar = accountAvatar,
+                            onPlay = ::play,
+                            onSwitchServer = ::showServerPicker,
+                            onSignOut = ::signOut,
+                            onLeave = ::leaveApp,
+                            onDismissError = ::clearError,
+                        )
                     } else {
                         LaunchedEffect(state.stage) {
                             Analytics.screen = state.stage.name.lowercase()
@@ -253,31 +119,13 @@ class MainActivity : ComponentActivity() {
                             onRetry = ::retry,
                         )
                     }
-                    val waiting = state.busy || state.stage == BrowserStage.TITLES && tab == "home" && !homeReady
-                    LaunchedEffect(splash, waiting, state.error) {
-                        if (splash && (!waiting || state.error != null)) splash = false
-                    }
-                    LaunchedEffect(splash) {
-                        if (splash) {
-                            delay(SPLASH_LIMIT_MS)
-                            splash = false
-                        }
-                    }
-                    val splashAlpha by animateFloatAsState(if (splash) 1f else 0f, tween(400), label = "start screen")
-                    if (splashAlpha > 0f) StartScreen(Modifier.fillMaxSize().graphicsLayer { alpha = splashAlpha })
+                    StartScreenCover()
                 }
             }
         }
         lifecycleScope.launch {
             PlaybackMonitor.state.collect { playback ->
-                if (!playback.running && playback.phase != "Ready") {
-                    pendingMovie?.let { movieLibrary?.refreshItem(it) }
-                    pendingMovie = null
-                    pendingShow?.takeIf { it in showHistory }?.refresh()
-                    if (pendingShow != null) selectedShowKey?.let { showLibrary?.refreshItem(it) }
-                    pendingShow = null
-                    homeState?.refresh()
-                }
+                if (!playback.running && playback.phase != "Ready") browser?.refreshAfterPlayback()
             }
         }
         runAction {
@@ -287,10 +135,27 @@ class MainActivity : ComponentActivity() {
             } else {
                 account = saved
                 refreshAccount(saved)
-                navigationSelection = navigationStore.load()
                 showServers(restore = true)
             }
         }
+    }
+
+    /** Covers everything until Home is ready, so the first page never assembles itself on screen. */
+    @Composable
+    private fun StartScreenCover() {
+        val current = browser
+        val waiting = state.busy || state.stage == BrowserStage.TITLES && current != null && current.tab == "home" && !current.homeReady
+        LaunchedEffect(splash, waiting, state.error) {
+            if (splash && (!waiting || state.error != null)) splash = false
+        }
+        LaunchedEffect(splash) {
+            if (splash) {
+                delay(SPLASH_LIMIT_MS)
+                splash = false
+            }
+        }
+        val alpha by animateFloatAsState(if (splash) 1f else 0f, tween(400), label = "start screen")
+        if (alpha > 0f) StartScreen(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha })
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -302,6 +167,12 @@ class MainActivity : ComponentActivity() {
         // Keys would move focus on the page hidden under the start screen.
         if (splash) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun blocked() = PlaybackMonitor.state.value.running || state.busy
+
+    private fun clearError() {
+        state = state.copy(error = null)
     }
 
     /** Keeps the saved name and picture current; an account saved before pictures existed gets one. */
@@ -337,49 +208,36 @@ class MainActivity : ComponentActivity() {
 
     /** Commands from tools/bench.py, so every benchmark run starts from the same state. */
     private fun runCommand(command: String) {
-        if (PlaybackMonitor.state.value.running || state.busy || connection == null) return
+        val current = browser ?: return
+        if (blocked()) return
+        val focus = current.focus
+        val target = command.substringAfter(':')
         when (command) {
             "clear-memory", "clear-disk" -> {
-                posterRepository?.clearMemory()
-                if (command == "clear-disk") posterRepository?.clearDisk()
+                current.posters.clearMemory()
+                if (command == "clear-disk") current.posters.clearDisk()
                 clearWashes()
             }
-            "home" -> restartHome()
-            "open:movie", "open:show" -> reopenLibrary(command.removePrefix("open:"))
-            "focus" -> collectionFocus.enterContent(tab)
+            "home" -> {
+                splash = true
+                current.restart()
+            }
+            "open:movie", "open:show" -> current.reopen(target)
+            "focus" -> focus.enterContent(current.tab)
             "tab:home" -> {
-                collectionFocus.enterContent("home")
-                showHome()
+                focus.enterContent("home")
+                current.showHome()
             }
             "tab:search", "tab:watchlist" -> {
-                collectionFocus.enterContent(command.removePrefix("tab:"))
-                openPage(command.removePrefix("tab:"))
+                focus.enterContent(target)
+                current.openPage(target)
             }
             "tab:movie", "tab:show" -> {
-                collectionFocus.enterContent(command.removePrefix("tab:"))
-                selectCollection(command.removePrefix("tab:"))
+                focus.enterContent(target)
+                current.selectCollection(target)
             }
-            else -> if (command.startsWith("type:")) searchState?.type(command.removePrefix("type:"))
+            else -> if (command.startsWith("type:")) current.search?.type(target)
         }
-    }
-
-    /** A fresh Home behind the start screen, as after a cold start. */
-    private fun restartHome() {
-        val selected = connection ?: return
-        closeCollections()
-        homeEpoch++
-        homeReady = false
-        splash = true
-        homeState = HomeState(selected, lifecycleScope)
-        prepareLibraries(selected)
-        openHome()
-    }
-
-    private fun reopenLibrary(type: String) {
-        val library = libraryOf(type) ?: return
-        if (type == "movie") closeMovies() else closeShows()
-        collectionFocus.enterContent(type)
-        openLibrary(library)
     }
 
     /** Codes renew on their own a few times, so an idle sign-in screen stops polling plex.tv eventually. */
@@ -402,7 +260,6 @@ class MainActivity : ComponentActivity() {
                     val linked = accountClient.account(token)
                     store.save(linked)
                     navigationStore.clear()
-                    navigationSelection = PlexNavigationSelection()
                     account = linked
                     showAvatar(linked)
                     splash = true
@@ -418,217 +275,54 @@ class MainActivity : ComponentActivity() {
     /** Restore IDs only after resolving the account's currently authorized server and libraries. */
     private suspend fun showServers(restore: Boolean = false) {
         val current = account ?: return
-        state = PlexBrowserState(
-            stage = BrowserStage.SERVERS,
-            heading = "Choose a server",
-            accountName = current.displayName,
-            libraries = state.libraries,
-            busy = true,
-            canGoBack = connection != null,
-        )
+        state = PlexBrowserState(stage = BrowserStage.SERVERS, accountName = current.displayName, busy = true)
         val servers = accountClient.servers(current.token)
         state = state.copy(servers = servers)
         if (restore) {
-            val server = navigationSelection.serverFrom(servers)
+            val saved = navigationStore.load()
+            val server = saved.serverFrom(servers)
             if (server != null) connectServer(server)
-            else if (navigationSelection.serverId != null)
+            else if (saved.serverId != null)
                 state = state.copy(error = "Your saved server is not available. Choose a server to continue.")
         }
     }
 
     private fun showServerPicker() {
-        if (PlaybackMonitor.state.value.running || state.busy) return
+        if (blocked()) return
         runAction { showServers() }
     }
 
     private fun selectServer(server: PlexServer) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        if (server.id == serverId && homeState != null) return resumeCollection()
+        if (blocked()) return
+        if (server.id == browser?.server?.id) return resume()
         runAction { connectServer(server) }
     }
 
     private suspend fun connectServer(server: PlexServer) {
-        val selected = accountClient.connect(server)
-        val libraries = PlexClient(selected).libraries()
-        closeCollections()
-        posterRepository?.close()
-        posterRepository = PosterRepository(this, selected)
-        connection = selected
-        serverId = server.id
-        serverName = server.name
-        state = state.copy(libraries = libraries)
-        if (navigationSelection.serverId != server.id) {
-            navigationStore.rememberServer(server.id)
-            navigationSelection = navigationStore.load()
-        }
-        homeReady = false
-        homeState = HomeState(selected, lifecycleScope)
-        prepareLibraries(selected)
-        openHome()
+        val token = checkNotNull(account).token
+        val connection = accountClient.connect(server)
+        val libraries = PlexClient(connection).libraries()
+        navigationStore.rememberServer(server.id)
+        val selection = navigationStore.load()
+        closeBrowser()
+        browser = Browser(
+            server = server,
+            connection = connection,
+            libraries = libraries,
+            savedSelection = selection,
+            navigationStore = navigationStore,
+            newWatchlist = { WatchlistState(accountClient, token, PlexClient(connection), lifecycleScope) },
+            posters = PosterRepository(this, connection),
+            scope = lifecycleScope,
+            dip = pageDip,
+            blocked = ::blocked,
+            onNavigate = ::clearError,
+        )
+        resume()
     }
 
-    /** The saved libraries start loading behind the start screen, so their first visit has titles ready. */
-    private fun prepareLibraries(selected: PlexConnection) {
-        libraryOf("movie")?.let {
-            movieLibrary = CollectionLibraryState(it, selected, lifecycleScope)
-        }
-        libraryOf("show")?.let {
-            showLibrary = CollectionLibraryState(it, selected, lifecycleScope)
-        }
-    }
-
-    private fun openHome() {
-        tab = "home"
-        homeOrigin = false
-        state = state.copy(stage = BrowserStage.TITLES, heading = "Home", error = null, canGoBack = true)
-    }
-
-    /** Search and Watchlist are peers of Home: their tab shows them, and Back returns to Home. */
-    private fun openPage(name: String) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        val selected = connection ?: return
-        if (name == "search" && searchState == null) searchState = SearchState(PlexClient(selected), lifecycleScope)
-        if (name == "watchlist") {
-            val token = account?.token ?: return
-            (watchlistState ?: WatchlistState(accountClient, token, PlexClient(selected), lifecycleScope)
-                .also { watchlistState = it }).refresh()
-        }
-        pageDip.change {
-            tab = name
-            state = state.copy(stage = BrowserStage.TITLES, error = null)
-        }
-    }
-
-    private fun showHome() {
-        if (PlaybackMonitor.state.value.running || state.busy || homeState == null) return
-        pageDip.change(::openHome)
-    }
-
-    /** Shows and seasons open in their own TV library; Back from that stack returns to Home. */
-    private fun openFromHome(item: PlexBrowseItem) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        val selected = connection ?: return
-        val path = item.childrenPath ?: return
-        val library = state.libraries.firstOrNull { it.type == "show" && it.key == item.libraryKey }
-            ?: libraryOf("show") ?: return
-        pageDip.change {
-            if (showLibrary?.library?.key != library.key) {
-                closeShows()
-                showLibrary = CollectionLibraryState(library, selected, lifecycleScope)
-            }
-            showHistory.forEach { it.close() }
-            showHistory.clear()
-            if (item.type == "show") selectedShowKey = item.ratingKey
-            val level = if (item.type == "season") ShowBrowseLevel.EPISODES else ShowBrowseLevel.SEASONS
-            showHistory += ShowBrowseState(path, item.title, level, selected, lifecycleScope)
-            activeLibrary = library
-            tab = "show"
-            homeOrigin = true
-            state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
-        }
-    }
-
-    private suspend fun saveLibrarySelection(library: PlexLibrary) {
-        val id = checkNotNull(serverId)
-        val key = if (library.type == "movie") navigationSelection.movieLibraryKey else navigationSelection.showLibraryKey
-        if (navigationSelection.serverId != id || navigationSelection.activeType != library.type || key != library.key) {
-            navigationStore.rememberLibrary(id, library)
-            navigationSelection = navigationStore.load()
-        }
-    }
-
-    /**
-     * Switches at once instead of as a busy action, which would disable and re-enable every card.
-     * The choice is saved in the background; a failed save only forgets it for the next start.
-     */
-    private fun selectLibrary(library: PlexLibrary) {
-        if (PlaybackMonitor.state.value.running || state.busy || connection == null) return
-        pageDip.change { openLibrary(library) }
-        lifecycleScope.launch {
-            try {
-                saveLibrarySelection(library)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    private fun openLibrary(library: PlexLibrary) {
-        val selected = checkNotNull(connection)
-        if (library.type == "movie") {
-            if (movieLibrary?.library?.key != library.key) {
-                closeMovies()
-                movieLibrary = CollectionLibraryState(library, selected, lifecycleScope)
-            }
-        } else {
-            if (showLibrary?.library?.key != library.key) {
-                closeShows()
-                showLibrary = CollectionLibraryState(library, selected, lifecycleScope)
-            }
-        }
-        activeLibrary = library
-        tab = library.type
-        homeOrigin = false
-        state = state.copy(stage = BrowserStage.TITLES, heading = library.title, error = null, canGoBack = true)
-    }
-
-    /** The remembered library of a type, or the server's first one; the library page can switch it. */
-    private fun libraryOf(type: String): PlexLibrary? =
-        navigationSelection.libraryFor(state.libraries, type) ?: state.libraries.firstOrNull { it.type == type }
-
-    /** Labels come from resolved libraries, never from type names; routes remain keyed by IDs. */
-    private fun collectionLabel(type: String): String? =
-        (if (type == "movie") movieLibrary?.library else showLibrary?.library)?.title
-            ?: libraryOf(type)?.title
-
-    private fun selectHeaderLibrary(library: PlexLibrary) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        val child = showHistory.lastOrNull().takeIf {
-            library.type == "show" && activeLibrary?.type == "show" && activeLibrary?.key == library.key
-        }
-        collectionFocus.enterHeader(child?.let { "show:${it.path}" } ?: "library:${library.key}")
-        selectLibrary(library)
-    }
-
-    private fun selectCollection(type: String) {
-        if (PlaybackMonitor.state.value.running || state.busy || tab == type) return
-        selectLibrary(libraryOf(type) ?: return)
-    }
-
-    /** A shared root card opens the child-only stack; it never opens movie details. */
-    private fun openShow(item: PlexBrowseItem) {
-        if (PlaybackMonitor.state.value.running || state.busy || tab != "show") return
-        val path = item.childrenPath ?: return
-        val root = showLibrary ?: return
-        pageDip.change {
-            showHistory.forEach { it.close() }
-            showHistory.clear()
-            selectedShowKey = item.ratingKey
-            showHistory += ShowBrowseState(path, item.title, ShowBrowseLevel.SEASONS, root.connection, lifecycleScope)
-        }
-    }
-
-    private fun selectShowItem(item: PlexBrowseItem) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        val current = showHistory.lastOrNull() ?: return
-        val path = item.childrenPath
-        if (path == null) {
-            play(item)
-        } else {
-            val next = when (current.level) {
-                // The root is CollectionScreen, not a ShowBrowseState.
-                ShowBrowseLevel.SEASONS -> ShowBrowseLevel.EPISODES
-                ShowBrowseLevel.EPISODES -> return
-            }
-            pageDip.change { showHistory += ShowBrowseState(path, item.title, next, current.connection, lifecycleScope) }
-        }
-    }
-
-    /** Back from a library returns to Home, the same as choosing the Home tab. */
-    private fun goHome() {
-        collectionFocus.enterContent("home")
-        showHome()
+    private fun resume() {
+        state = state.copy(stage = BrowserStage.TITLES, busy = false, error = null)
     }
 
     /** Back on Home leaves for the launcher but keeps the app ready to resume, as Android 12+ does. */
@@ -636,29 +330,15 @@ class MainActivity : ComponentActivity() {
         moveTaskToBack(true)
     }
 
-    private fun resumeCollection() {
-        if (tab == "home" && homeState != null) return openHome()
-        val library = activeLibrary ?: return
-        state = state.copy(stage = BrowserStage.TITLES, heading = library.title, busy = false, error = null, canGoBack = true)
-    }
-
     private fun navigateBack() {
         if (PlaybackMonitor.state.value.running) return
         when (state.stage) {
             BrowserStage.SIGN_IN -> leaveApp()
-            BrowserStage.SERVERS -> {
-                if (activeLibrary != null || homeState != null) { cancelAction(); resumeCollection() }
-                else leaveApp()
-            }
-            BrowserStage.TITLES -> {
-                if (tab == "show" && showHistory.isNotEmpty()) pageDip.change {
-                    showHistory.removeLastOrNull()?.close()
-                    val parent = showHistory.lastOrNull()
-                    if (parent != null) parent.refresh()
-                    else if (homeOrigin && homeState != null) openHome()
-                    else selectedShowKey?.let { showLibrary?.refreshItem(it) }
-                } else goHome()
-            }
+            BrowserStage.SERVERS -> if (browser != null) {
+                cancelAction()
+                resume()
+            } else leaveApp()
+            BrowserStage.TITLES -> browser?.back()
         }
     }
 
@@ -666,25 +346,14 @@ class MainActivity : ComponentActivity() {
         when (state.stage) {
             BrowserStage.SIGN_IN -> linkAccount()
             BrowserStage.SERVERS -> runAction { showServers() }
-            BrowserStage.TITLES -> {
-                if (activeLibrary?.type == "movie") movieLibrary?.retry()
-                else showHistory.lastOrNull()?.retry() ?: showLibrary?.retry()
-            }
+            BrowserStage.TITLES -> browser?.retry()
         }
     }
 
     private fun signOut() {
         if (PlaybackMonitor.state.value.running) return
         runAction {
-            closeCollections()
-            posterRepository?.close()
-            posterRepository = null
-            account = null
-            accountAvatar = null
-            connection = null
-            serverId = null
-            serverName = ""
-            navigationSelection = PlexNavigationSelection()
+            forgetAccount()
             state = PlexBrowserState(busy = true)
             store.clear()
             navigationStore.clear()
@@ -692,17 +361,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun forgetAccount() {
+        closeBrowser()
+        account = null
+        accountAvatar = null
+    }
+
+    private fun closeBrowser() {
+        browser?.close()
+        browser = null
+    }
+
     private fun play(item: PlexBrowseItem, startFromBeginning: Boolean = false) {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        val selected = connection ?: return
+        if (blocked()) return
+        val current = browser ?: return
         runAction {
-            val original = PlexClient(selected).loadMedia(item.ratingKey)
+            val original = PlexClient(current.connection).loadMedia(item.ratingKey)
             val media = if (startFromBeginning) original.copy(resumePositionMs = 0) else original
             val launch = PlayerHandoff.prepare(this, media)
-            pendingMovie = item.ratingKey.takeIf { activeLibrary?.type == "movie" }
-            pendingShow = showHistory.lastOrNull().takeIf { activeLibrary?.type == "show" }
+            current.played(item)
             playingDurationMs = media.durationMs
-            PlaybackService.begin(this, selected, media, launch.liveStatus)
+            PlaybackService.begin(this, current.connection, media, launch.liveStatus)
             try {
                 nativePlayer.launch(launch.intent)
             } catch (_: ActivityNotFoundException) {
@@ -715,39 +394,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun closeMovies() {
-        movieLibrary?.close()
-        movieLibrary = null
-        pendingMovie = null
-    }
-
-    private fun closeShows() {
-        showLibrary?.close()
-        showLibrary = null
-        selectedShowKey = null
-        showHistory.forEach { it.close() }
-        showHistory.clear()
-        pendingShow = null
-    }
-
-    private fun closeCollections() {
-        tab = "home"
-        searchState?.close()
-        searchState = null
-        watchlistState?.close()
-        watchlistState = null
-        closeMovies()
-        closeShows()
-        activeLibrary = null
-        homeState?.close()
-        homeState = null
-        homeOrigin = false
-    }
-
     override fun onDestroy() {
-        closeCollections()
-        posterRepository?.close()
-        posterRepository = null
+        closeBrowser()
         super.onDestroy()
     }
 
@@ -767,15 +415,7 @@ class MainActivity : ComponentActivity() {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (expired: PlexAuthenticationException) {
-                account = null
-                accountAvatar = null
-                closeCollections()
-                posterRepository?.close()
-                posterRepository = null
-                connection = null
-                serverId = null
-                serverName = ""
-                navigationSelection = PlexNavigationSelection()
+                forgetAccount()
                 val message = try {
                     store.clear()
                     navigationStore.clear()
