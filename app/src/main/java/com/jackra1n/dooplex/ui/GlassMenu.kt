@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
@@ -49,19 +50,36 @@ internal fun GlassMenu(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    var armed by remember { mutableStateOf(false) }
     Popup(alignment = alignment, offset = offset, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        Column(
-            // A held OK that opened the menu keeps repeating; only a fresh press may choose.
-            Modifier.onPreviewKeyEvent {
-                if (it.key != Key.DirectionCenter && it.key != Key.Enter) return@onPreviewKeyEvent false
-                if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount == 0) armed = true
-                !armed
-            }.width(width).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp).padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            content = content,
-        )
+        GlassPanel(width, content)
     }
+}
+
+@Composable
+internal fun GlassMenu(
+    position: PopupPositionProvider,
+    width: Dp,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        GlassPanel(width, content)
+    }
+}
+
+@Composable
+private fun GlassPanel(width: Dp, content: @Composable ColumnScope.() -> Unit) {
+    var armed by remember { mutableStateOf(false) }
+    Column(
+        // A held OK that opened the menu keeps repeating; only a fresh press may choose.
+        Modifier.onPreviewKeyEvent {
+            if (it.key != Key.DirectionCenter && it.key != Key.Enter) return@onPreviewKeyEvent false
+            if (it.type == KeyEventType.KeyDown && it.nativeKeyEvent.repeatCount == 0) armed = true
+            !armed
+        }.width(width).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        content = content,
+    )
 }
 
 @Composable
