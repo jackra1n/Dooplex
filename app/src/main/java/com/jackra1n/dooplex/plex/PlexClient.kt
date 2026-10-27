@@ -172,6 +172,30 @@ class PlexClient(private val connection: PlexConnection) {
         }
     }
 
+    suspend fun mediaInfo(ratingKey: String): List<MediaInfoSection> = withContext(Dispatchers.IO) {
+        requireRatingKey(ratingKey)
+        try {
+            val item = JSONObject(request("/library/metadata/$ratingKey", operation = "media info"))
+                .getJSONObject("MediaContainer").optJSONArray("Metadata")?.optJSONObject(0)
+                ?: throw IOException("Plex returned no media info.")
+            PlexMediaInfo.sections(item)
+        } catch (_: JSONException) {
+            throw IOException("Plex returned invalid media info.")
+        }
+    }
+
+    /** Marks a movie, episode, season or whole show watched or unwatched. */
+    suspend fun setWatched(ratingKey: String, watched: Boolean) {
+        withContext(Dispatchers.IO) {
+            requireRatingKey(ratingKey)
+            request(
+                if (watched) "/:/scrobble" else "/:/unscrobble",
+                mapOf("identifier" to "com.plexapp.plugins.library", "key" to ratingKey),
+                operation = "watched",
+            )
+        }
+    }
+
     /** Posters retain cover sizing; clear logos use transparent PNG with aspect-fit bounds. */
     fun artworkUrl(artworkPath: String, width: Int, height: Int): String {
         val standardArtwork = THUMB_PATH.matches(artworkPath) || ART_PATH.matches(artworkPath)
