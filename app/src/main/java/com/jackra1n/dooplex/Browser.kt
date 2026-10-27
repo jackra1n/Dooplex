@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.details.MediaInfoState
+import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.home.HomeState
 import com.jackra1n.dooplex.library.CollectionLibraryState
 import com.jackra1n.dooplex.library.ShowBrowseLevel
@@ -172,7 +173,9 @@ internal class Browser(
     }
 
     fun openMenu(item: PlexBrowseItem) {
-        if (!blocked()) menu = item
+        if (blocked()) return
+        menu = item
+        Analytics.event("menu", "type" to item.type)
     }
 
     fun closeMenu() {

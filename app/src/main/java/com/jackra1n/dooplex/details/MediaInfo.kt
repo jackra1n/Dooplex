@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.MediaInfoSection
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.plex.PlexClient
@@ -55,10 +56,12 @@ class MediaInfoState(val item: PlexBrowseItem, client: PlexClient, scope: Corout
     private val job = scope.launch {
         try {
             sections = client.mediaInfo(item.ratingKey)
+            Analytics.event("media-info", "sections" to sections?.size)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: IOException) {
             error = failure.message ?: "Plex could not load the media info."
+            Analytics.event("media-info", "error" to error)
         }
     }
 
