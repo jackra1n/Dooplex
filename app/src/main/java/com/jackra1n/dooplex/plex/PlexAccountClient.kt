@@ -120,7 +120,14 @@ class PlexAccountClient(private val clientId: String) {
                         val guid = item.optString("guid")
                         val type = item.optString("type")
                         if (guid.startsWith("plex://") && (type == "movie" || type == "show")) {
-                            add(WatchlistEntry(guid, type, item.optString("title")))
+                            add(WatchlistEntry(
+                                guid = guid,
+                                type = type,
+                                title = item.optString("title"),
+                                year = item.optString("year"),
+                                summary = item.optString("summary"),
+                                thumb = item.optString("thumb"),
+                            ))
                         }
                     }
                     start += items.length()
@@ -128,6 +135,15 @@ class PlexAccountClient(private val clientId: String) {
                 }
             }
         }
+    }
+
+    /** Discover identifies a title by the last part of its `plex://` id. */
+    suspend fun setWatchlisted(token: String, guid: String, watchlisted: Boolean): Unit = withContext(Dispatchers.IO) {
+        require(headerValue(token)) { "A valid Plex account token is required." }
+        val id = guid.substringAfterLast('/')
+        require(guid.startsWith("plex://") && id.isNotEmpty() && id.all { it.isLetterOrDigit() }) { "This title can't be added to a watchlist." }
+        val action = if (watchlisted) "addToWatchlist" else "removeFromWatchlist"
+        request("https://discover.provider.plex.tv/actions/$action?ratingKey=$id", token = token, method = "PUT", body = "")
     }
 
     suspend fun servers(token: String): List<PlexServer> = withContext(Dispatchers.IO) {

@@ -311,7 +311,7 @@ class MainActivity : ComponentActivity() {
             libraries = libraries,
             savedSelection = selection,
             navigationStore = navigationStore,
-            newWatchlist = { WatchlistState(accountClient, token, PlexClient(connection), lifecycleScope) },
+            watchlist = WatchlistState(accountClient, token, PlexClient(connection), server.name, lifecycleScope),
             posters = PosterRepository(this, connection),
             scope = lifecycleScope,
             dip = pageDip,

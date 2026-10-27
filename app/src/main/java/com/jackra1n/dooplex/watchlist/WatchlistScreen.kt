@@ -24,6 +24,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,7 +40,7 @@ import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import com.jackra1n.dooplex.ui.pageFade
 
-/** The watchlist as a poster grid under the top bar; titles this server lacks are only counted. */
+/** The watchlist as a poster grid under the top bar; titles this server lacks open without Play. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun WatchlistScreen(
@@ -55,17 +56,24 @@ internal fun WatchlistScreen(
 ) {
     val first = remember { FocusRequester() }
     val retry = remember { FocusRequester() }
+    val grid = remember { FocusRequester() }
     val selected = state.details.movie
+    val selectedOnServer = state.titles.firstOrNull { it.item.ratingKey == selected?.ratingKey }?.onServer ?: true
+    // The grid takes focus back while details still covers it, so focus never falls to the first tab.
+    fun closeDetails() {
+        grid.requestFocus()
+        state.details.close()
+    }
     LaunchedEffect(focus.contentEpoch, state.loading) {
         if (focus.contentType != "watchlist" || state.loading) return@LaunchedEffect
         withFrameNanos { }
-        if (state.items.isNotEmpty()) first.requestFocus() else if (state.error != null) retry.requestFocus()
+        if (state.titles.isNotEmpty()) first.requestFocus() else if (state.error != null) retry.requestFocus()
         focus.completeContent("watchlist")
     }
     LaunchedEffect(focus.headerEpoch) {
         if (focus.headerRoute != "watchlist") return@LaunchedEffect
         withFrameNanos { }
-        if (state.items.isNotEmpty()) first.requestFocus()
+        if (state.titles.isNotEmpty()) first.requestFocus()
         focus.completeHeader("watchlist")
     }
     BackHandler(enabled = enabled && selected == null, onBack = onBack)
@@ -85,7 +93,7 @@ internal fun WatchlistScreen(
                     contentPadding = PaddingValues(start = edge, end = edge, bottom = 64.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().focusRequester(grid).focusRestorer(),
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column {
@@ -94,10 +102,9 @@ internal fun WatchlistScreen(
                                 when {
                                     state.loading -> "Loading your watchlist…"
                                     state.error != null -> state.error!!
-                                    state.items.isEmpty() && state.missing == 0 ->
-                                        "Nothing here yet. Add movies and shows to your watchlist in any Plex app."
-                                    state.missing > 0 -> "${state.missing} more on your watchlist ${if (state.missing == 1) "isn't" else "aren't"} on $serverName."
-                                    else -> "${state.items.size} ${if (state.items.size == 1) "title" else "titles"}"
+                                    state.titles.isEmpty() -> "Nothing here yet. Add movies from their details page, or in any Plex app."
+                                    state.missing > 0 -> "${state.titles.size} titles · ${state.missing} not on $serverName"
+                                    else -> "${state.titles.size} ${if (state.titles.size == 1) "title" else "titles"}"
                                 },
                                 color = if (state.error != null) CinemaColors.Error else CinemaColors.Muted,
                                 fontSize = 18.sp, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
@@ -107,7 +114,7 @@ internal fun WatchlistScreen(
                             }
                         }
                     }
-                    itemsIndexed(state.items, key = { _, item -> item.ratingKey }) { index, item ->
+                    itemsIndexed(state.titles, key = { _, title -> title.item.ratingKey }) { index, (item, onServer) ->
                         CollectionPosterCard(
                             item = item,
                             posters = posters,
@@ -116,7 +123,13 @@ internal fun WatchlistScreen(
                             enabled = enabled,
                             modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(first) else Modifier),
                             onFocus = {},
-                            onClick = { if (item.type == "movie") state.details.open(item) else onOpen(item) },
+                            onClick = {
+                                when {
+                                    !onServer -> state.details.show(item)
+                                    item.type == "movie" -> state.details.open(item)
+                                    else -> onOpen(item)
+                                }
+                            },
                             placeholderLabel = item.title,
                         )
                     }
@@ -131,11 +144,12 @@ internal fun WatchlistScreen(
         loading = state.details.loading,
         error = state.details.error,
         enabled = enabled,
-        onDismiss = state.details::close,
+        onDismiss = ::closeDetails,
         onRetry = { state.details.open(selected) },
         onPlay = { fromBeginning ->
-            state.details.close()
+            closeDetails()
             onPlay(selected, fromBeginning)
         },
+        playable = selectedOnServer,
     )
 }

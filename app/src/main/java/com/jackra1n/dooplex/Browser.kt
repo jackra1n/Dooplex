@@ -37,7 +37,8 @@ internal class Browser(
     val libraries: List<PlexLibrary>,
     savedSelection: PlexNavigationSelection,
     private val navigationStore: PlexNavigationStore,
-    private val newWatchlist: () -> WatchlistState,
+    /** Loaded on connect, so a details page knows whether its title is on the watchlist. */
+    val watchlist: WatchlistState,
     val posters: PosterRepository,
     private val scope: CoroutineScope,
     private val dip: PageDip,
@@ -60,12 +61,14 @@ internal class Browser(
     val showHistory = mutableStateListOf<ShowBrowseState>()
     var search by mutableStateOf<SearchState?>(null)
         private set
-    var watchlist by mutableStateOf<WatchlistState?>(null)
-        private set
     private var homeOrigin = false
     private var selectedShowKey: String? = null
     private var pendingMovie: String? = null
     private var pendingShow: ShowBrowseState? = null
+
+    init {
+        watchlist.refresh()
+    }
 
     /** The open season or episode list, when the TV Shows tab shows one. */
     val child: ShowBrowseState? get() = showHistory.lastOrNull().takeIf { tab == "show" }
@@ -92,7 +95,7 @@ internal class Browser(
     fun openPage(name: String) {
         if (blocked()) return
         if (name == "search" && search == null) search = SearchState(PlexClient(connection), scope)
-        if (name == "watchlist") (watchlist ?: newWatchlist().also { watchlist = it }).refresh()
+        if (name == "watchlist") watchlist.refresh()
         dip.change { show(name) }
     }
 
@@ -201,6 +204,7 @@ internal class Browser(
 
     fun close() {
         closeStates()
+        watchlist.close()
         posters.close()
     }
 
@@ -278,8 +282,6 @@ internal class Browser(
     private fun closeStates() {
         search?.close()
         search = null
-        watchlist?.close()
-        watchlist = null
         closeMovies()
         closeShows()
         home.close()

@@ -70,6 +70,7 @@ import com.jackra1n.dooplex.plex.PlexMediaRating
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
+import com.jackra1n.dooplex.watchlist.LocalWatchlist
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -93,7 +94,10 @@ internal fun MovieDetailsScreen(
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     onPlay: (Boolean) -> Unit,
+    playable: Boolean = true,
 ) {
+    val watchlist = LocalWatchlist.current?.takeIf { movie.guid.startsWith("plex://") }
+    val watchFocus = remember(movie.ratingKey) { FocusRequester() }
     val playFocus = remember(movie.ratingKey) { FocusRequester() }
     val startFocus = remember(movie.ratingKey) { FocusRequester() }
     val retryFocus = remember(movie.ratingKey) { FocusRequester() }
@@ -106,7 +110,9 @@ internal fun MovieDetailsScreen(
     var reading by remember(movie.ratingKey) { mutableStateOf(false) }
     var readingFocused by remember(movie.ratingKey) { mutableStateOf(false) }
     var lastFocus by remember(movie.ratingKey) { mutableStateOf(DetailFocus.Play) }
-    val resume = movie.viewOffsetMs > 0 && (movie.durationMs <= 0 || movie.viewOffsetMs < movie.durationMs)
+    val resume = playable && movie.viewOffsetMs > 0 && (movie.durationMs <= 0 || movie.viewOffsetMs < movie.durationMs)
+    // The first action: Play, or the watchlist button for a title this server doesn't have.
+    val primaryFocus = if (playable) playFocus else if (watchlist != null) watchFocus else moreFocus
     val metadata = remember(movie) {
         listOfNotNull(
             movie.subtitle.takeIf { it.isNotBlank() },
@@ -195,8 +201,8 @@ internal fun MovieDetailsScreen(
                             .focusProperties {
                                 up = FocusRequester.Cancel
                                 left = FocusRequester.Cancel
-                                right = playFocus
-                                down = playFocus
+                                right = primaryFocus
+                                down = primaryFocus
                             },
                     ) { DetailActionText(if (compact) "‹  Back" else "‹  Back to library", compact) }
                     Spacer(Modifier.weight(1f))
@@ -257,7 +263,7 @@ internal fun MovieDetailsScreen(
                             horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            CinemaButton(
+                            if (playable) CinemaButton(
                                 onClick = { onPlay(false) }, enabled = enabled, primary = true,
                                 modifier = Modifier.focusRequester(playFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Play }
@@ -265,7 +271,7 @@ internal fun MovieDetailsScreen(
                                         up = backFocus
                                         down = moreFocus
                                         left = FocusRequester.Cancel
-                                        right = if (resume) startFocus else FocusRequester.Cancel
+                                        right = if (resume) startFocus else if (watchlist != null) watchFocus else FocusRequester.Cancel
                                     },
                             ) {
                                 DetailPlayIcon(compact)
@@ -282,9 +288,22 @@ internal fun MovieDetailsScreen(
                                         up = backFocus
                                         down = if (error != null) retryFocus else moreFocus
                                         left = playFocus
-                                        right = FocusRequester.Cancel
+                                        right = if (watchlist != null) watchFocus else FocusRequester.Cancel
                                     },
                             ) { DetailActionText("Start over", compact) }
+                            if (watchlist != null) CinemaButton(
+                                onClick = { watchlist.toggle(movie) }, enabled = enabled, primary = !playable,
+                                modifier = Modifier.focusRequester(watchFocus)
+                                    .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Watchlist }
+                                    .focusProperties {
+                                        up = backFocus
+                                        down = moreFocus
+                                        left = if (resume) startFocus else if (playable) playFocus else FocusRequester.Cancel
+                                        right = FocusRequester.Cancel
+                                    },
+                            ) {
+                                DetailActionText(if (watchlist.contains(movie.guid)) "✓  On watchlist" else "+  Watchlist", compact)
+                            }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 18.dp else 24.dp)) {
                             DetailReadingLink(
@@ -295,7 +314,7 @@ internal fun MovieDetailsScreen(
                                 modifier = Modifier.focusRequester(moreFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.More }
                                     .focusProperties {
-                                        up = playFocus
+                                        up = primaryFocus
                                         down = FocusRequester.Cancel
                                         left = FocusRequester.Cancel
                                         right = if (error != null) retryFocus else FocusRequester.Cancel
@@ -309,7 +328,7 @@ internal fun MovieDetailsScreen(
                                 modifier = Modifier.focusRequester(retryFocus)
                                     .onFocusChanged { if (it.isFocused) lastFocus = DetailFocus.Retry }
                                     .focusProperties {
-                                        up = if (resume) startFocus else playFocus
+                                        up = if (resume) startFocus else primaryFocus
                                         down = FocusRequester.Cancel
                                         left = moreFocus
                                         right = FocusRequester.Cancel
@@ -445,19 +464,19 @@ internal fun MovieDetailsScreen(
             when {
                 reading -> readingFocus.requestFocus()
                 lastFocus == DetailFocus.Reader || lastFocus == DetailFocus.ReaderBack -> moreFocus.requestFocus()
-                else -> playFocus.requestFocus()
+                else -> primaryFocus.requestFocus()
             }
         }
     }
     LaunchedEffect(movie.ratingKey, enabled, resume, error != null) {
         if (enabled && !reading && focusedActionRemoved) {
             withFrameNanos { }
-            playFocus.requestFocus()
+            primaryFocus.requestFocus()
         }
     }
 }
 
-private enum class DetailFocus { Back, More, Reader, ReaderBack, Play, StartOver, Retry }
+private enum class DetailFocus { Back, More, Reader, ReaderBack, Play, StartOver, Retry, Watchlist }
 
 @Composable
 private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, active: Boolean) {

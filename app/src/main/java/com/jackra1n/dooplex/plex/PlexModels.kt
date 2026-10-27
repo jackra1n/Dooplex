@@ -12,7 +12,15 @@ data class PlexServer(
     val connections: List<PlexServerEndpoint>,
 )
 data class PlexLibrary(val key: String, val title: String, val type: String)
-data class WatchlistEntry(val guid: String, val type: String, val title: String)
+/** A watchlist title from Plex's Discover service; [thumb] is its poster URL as Discover gave it. */
+data class WatchlistEntry(
+    val guid: String,
+    val type: String,
+    val title: String,
+    val year: String = "",
+    val summary: String = "",
+    val thumb: String = "",
+)
 /**
  * Optional artwork is restricted to local metadata paths or trusted Plex-hosted clear-logo assets.
  * Credits retain server order. Ratings carry explicit provenance on Plex's 0..10 scale; source
@@ -42,6 +50,7 @@ data class PlexBrowseItem(
     val audioFormat: String = "",
     val type: String = "",
     val libraryKey: String? = null,
+    val guid: String = "",
 )
 
 /** One server-arranged Home shelf, Continue Watching first; empty shelves are never kept. */

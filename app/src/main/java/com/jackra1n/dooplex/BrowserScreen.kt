@@ -1,6 +1,7 @@
 package com.jackra1n.dooplex
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.SaveableStateHolder
@@ -13,6 +14,7 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.search.SearchScreen
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.MessageToast
+import com.jackra1n.dooplex.watchlist.LocalWatchlist
 import com.jackra1n.dooplex.watchlist.WatchlistScreen
 
 /** The current tab of a connected server, under the shared top bar. */
@@ -65,7 +67,7 @@ internal fun BrowserScreen(
             showTitle = browser.label("show"),
             focus = focus,
             enabled = !blocked && browser.movies?.selectedMovie == null && browser.home.selectedMovie == null &&
-                browser.search?.details?.movie == null && browser.watchlist?.details?.movie == null,
+                browser.search?.details?.movie == null && browser.watchlist.details.movie == null,
             onHome = browser::showHome,
             onMovies = { browser.selectCollection("movie") },
             onShows = { browser.selectCollection("show") },
@@ -77,63 +79,64 @@ internal fun BrowserScreen(
         )
     }
     val search = browser.search
-    val watchlist = browser.watchlist
-    when {
-        tab == "search" && search != null -> SearchScreen(
-            state = search, posters = browser.posters, serverName = browser.server.name, navigation = navigation,
-            focus = focus, enabled = !blocked,
-            onPlay = onPlay, onOpen = browser::openFromHome, onBack = browser::goHome,
-        )
-        tab == "watchlist" && watchlist != null -> WatchlistScreen(
-            state = watchlist, posters = browser.posters, serverName = browser.server.name, navigation = navigation,
-            focus = focus, enabled = !blocked,
-            onPlay = onPlay, onOpen = browser::openFromHome, onBack = browser::goHome,
-        )
-        tab == "home" -> key(browser.home) {
-            destinations.SaveableStateProvider("$serverId:home:${browser.homeEpoch}") {
-                HomeScreen(
-                    state = browser.home,
+    CompositionLocalProvider(LocalWatchlist provides browser.watchlist) {
+        when {
+            tab == "search" && search != null -> SearchScreen(
+                state = search, posters = browser.posters, serverName = browser.server.name, navigation = navigation,
+                focus = focus, enabled = !blocked,
+                onPlay = onPlay, onOpen = browser::openFromHome, onBack = browser::goHome,
+            )
+            tab == "watchlist" -> WatchlistScreen(
+                state = browser.watchlist, posters = browser.posters, serverName = browser.server.name, navigation = navigation,
+                focus = focus, enabled = !blocked,
+                onPlay = onPlay, onOpen = browser::openFromHome, onBack = browser::goHome,
+            )
+            tab == "home" -> key(browser.home) {
+                destinations.SaveableStateProvider("$serverId:home:${browser.homeEpoch}") {
+                    HomeScreen(
+                        state = browser.home,
+                        posters = browser.posters,
+                        navigation = navigation,
+                        focus = focus,
+                        enabled = !blocked,
+                        onPlay = onPlay,
+                        onOpen = browser::openFromHome,
+                        onBack = onLeave,
+                        onReady = {
+                            browser.homeReady = true
+                            Analytics.event("ready", "what" to "home")
+                        },
+                    )
+                }
+            }
+            child != null -> destinations.SaveableStateProvider("$serverId:show:${child.path}") {
+                ShowsScreen(
+                    state = child,
                     posters = browser.posters,
+                    enabled = !blocked,
+                    error = error,
+                    onBack = browser::back,
+                    onItem = { if (it.childrenPath == null) onPlay(it, false) else browser.openSeason(it) },
                     navigation = navigation,
                     focus = focus,
-                    enabled = !blocked,
-                    onPlay = onPlay,
-                    onOpen = browser::openFromHome,
-                    onBack = onLeave,
-                    onReady = {
-                        browser.homeReady = true
-                        Analytics.event("ready", "what" to "home")
-                    },
                 )
             }
-        }
-        child != null -> destinations.SaveableStateProvider("$serverId:show:${child.path}") {
-            ShowsScreen(
-                state = child,
-                posters = browser.posters,
-                enabled = !blocked,
-                error = error,
-                onBack = browser::back,
-                onItem = { if (it.childrenPath == null) onPlay(it, false) else browser.openSeason(it) },
-                navigation = navigation,
-                focus = focus,
-            )
-        }
-        collection != null -> key(collection) {
-            destinations.SaveableStateProvider("$serverId:$tab:${collection.library.key}") {
-                CollectionScreen(
-                    state = collection,
-                    posters = browser.posters,
-                    navigation = navigation,
-                    focus = focus,
-                    libraries = browser.libraries.filter { it.type == tab },
-                    onLibrary = browser::selectHeaderLibrary,
-                    playbackRunning = blocked,
-                    error = error,
-                    onBack = browser::goHome,
-                    onPlay = onPlay,
-                    onOpenShow = browser::openShow,
-                )
+            collection != null -> key(collection) {
+                destinations.SaveableStateProvider("$serverId:$tab:${collection.library.key}") {
+                    CollectionScreen(
+                        state = collection,
+                        posters = browser.posters,
+                        navigation = navigation,
+                        focus = focus,
+                        libraries = browser.libraries.filter { it.type == tab },
+                        onLibrary = browser::selectHeaderLibrary,
+                        playbackRunning = blocked,
+                        error = error,
+                        onBack = browser::goHome,
+                        onPlay = onPlay,
+                        onOpenShow = browser::openShow,
+                    )
+                }
             }
         }
     }

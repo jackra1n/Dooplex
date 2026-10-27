@@ -272,6 +272,7 @@ class PlexClient(private val connection: PlexConnection) {
             audioFormat = original?.let { PlexSourceMetadata.audioFormat(it.media, it.part) }.orEmpty(),
             type = type,
             libraryKey = item.optString("librarySectionID").takeIf { RATING_KEY.matches(it) },
+            guid = item.optString("guid"),
         )
     }
 

@@ -38,6 +38,14 @@ class MovieDetailsLoader(private val client: PlexClient, private val scope: Coro
         }
     }
 
+    /** Shows a title the server doesn't have, with only what the list knew. */
+    fun show(item: PlexBrowseItem) {
+        job?.cancel()
+        movie = item
+        loading = false
+        error = null
+    }
+
     fun close() {
         job?.cancel()
         movie = null
