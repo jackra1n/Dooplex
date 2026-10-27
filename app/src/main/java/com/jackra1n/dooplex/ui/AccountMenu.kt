@@ -1,6 +1,7 @@
 package com.jackra1n.dooplex.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -27,19 +29,17 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -57,7 +58,10 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-/** The account bubble at the left of the top bar; selecting it opens the account menu below it. */
+/**
+ * The account at the left of the top bar: a round picture at rest that grows into a pill with the
+ * account name while focused or open. Selecting it opens the account menu below it.
+ */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun AccountChip(
@@ -73,11 +77,10 @@ internal fun AccountChip(
 ) {
     var focused by remember { mutableStateOf(false) }
     var open by remember { mutableStateOf(false) }
-    val light by animateFloatAsState(if (focused || open) 1f else 0f, spring(dampingRatio = 1f, stiffness = 300f), label = "account light")
-    val initial = accountName.trim().take(1).uppercase()
+    val expanded = focused || open
     Box {
-        Box(
-            Modifier.size(unit * 76).glassTrack()
+        Row(
+            Modifier.height(unit * 76).glassTrack()
                 .onFocusChanged { focused = it.isFocused }
                 .onPreviewKeyEvent { event ->
                     if (event.key != Key.DirectionDown) return@onPreviewKeyEvent false
@@ -88,30 +91,21 @@ internal fun AccountChip(
                     interactionSource = remember { MutableInteractionSource() }, indication = null,
                     enabled = enabled, role = Role.Button, onClick = { open = true },
                 )
-                .semantics { contentDescription = "Account, $accountName" },
-            contentAlignment = Alignment.Center,
+                .semantics { contentDescription = "Account, $accountName" }
+                .animateContentSize(spring(dampingRatio = 1f, stiffness = 400f, visibilityThreshold = IntSize.VisibilityThreshold))
+                .padding(start = unit * 8, end = if (expanded) unit * 30 else unit * 8),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (avatar != null) {
-                // The picture fills the bubble; focus shows as a light ring around it.
-                Box(Modifier.size(unit * 76).drawBehind { if (light > 0f) drawCircle(Glass.Light, alpha = light) })
-                Image(avatar, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(unit * 60).clip(CircleShape))
-            } else Box(
-                Modifier.size(unit * 60).drawBehind {
-                    drawCircle(Glass.Plate)
-                    if (light > 0f) drawCircle(Glass.Light, alpha = light)
-                },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(initial, color = lerp(Glass.Light, Glass.Ink, light),
-                    style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-            }
+            AccountPicture(accountName, avatar, unit * 60, labelStyle)
+            if (expanded) Text(
+                accountName, color = CinemaColors.Foreground,
+                style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = unit * 18).widthIn(max = unit * 360),
+            )
         }
         if (open) {
-            val below = with(LocalDensity.current) { (unit * 90).roundToPx() }
+            val below = with(LocalDensity.current) { (unit * 92).roundToPx() }
             AccountMenu(
-                accountName = accountName,
-                avatar = avatar,
                 serverName = serverName,
                 offset = IntOffset(0, below),
                 onDismiss = { open = false },
@@ -122,12 +116,24 @@ internal fun AccountChip(
     }
 }
 
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AccountPicture(accountName: String, avatar: ImageBitmap?, size: Dp, labelStyle: TextStyle) {
+    if (avatar != null) {
+        Image(avatar, contentDescription = null, contentScale = ContentScale.Crop,
+            modifier = Modifier.size(size).clip(CircleShape))
+    } else {
+        Box(Modifier.size(size).background(Glass.Plate, CircleShape), contentAlignment = Alignment.Center) {
+            Text(accountName.trim().take(1).uppercase(), color = Glass.Light,
+                style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+        }
+    }
+}
+
 /** Signing out asks once more, because linking again means scanning the sign-in code. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun AccountMenu(
-    accountName: String,
-    avatar: ImageBitmap?,
     serverName: String,
     offset: IntOffset,
     onDismiss: () -> Unit,
@@ -147,34 +153,21 @@ private fun AccountMenu(
         properties = PopupProperties(focusable = true),
     ) {
         Column(
-            Modifier.width(320.dp).background(Glass.Panel, RoundedCornerShape(24.dp)).glassRim(24.dp)
+            Modifier.width(320.dp).background(Glass.Panel, RoundedCornerShape(26.dp)).glassRim(26.dp)
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("ACCOUNT", color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp))
-            Row(
-                Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (avatar != null) Image(avatar, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(44.dp).clip(CircleShape))
-                Column {
-                    Text(accountName, color = CinemaColors.Foreground, fontSize = 18.sp, fontWeight = FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (serverName.isNotBlank()) Text(serverName, color = CinemaColors.Muted, fontSize = 15.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
             if (confirming) {
                 Text("Sign out of Plex? You'll need to scan the sign-in code again.",
                     color = CinemaColors.Muted, fontSize = 15.sp, lineHeight = 21.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 MenuRow("Cancel", Modifier.focusRequester(first)) { confirming = false }
                 MenuRow("Sign out", onClick = onSignOut)
             } else {
-                MenuRow("Switch server", Modifier.focusRequester(first), onClick = onSwitchServer)
+                MenuRow("Switch server", Modifier.focusRequester(first), detail = serverName, more = true,
+                    onClick = onSwitchServer)
+                Box(Modifier.padding(horizontal = 18.dp, vertical = 6.dp).fillMaxWidth().height(1.dp)
+                    .background(Glass.Rim))
                 MenuRow("Sign out") { confirming = true }
             }
         }
@@ -183,21 +176,31 @@ private fun AccountMenu(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun MenuRow(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MenuRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    detail: String = "",
+    more: Boolean = false,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val ink = if (focused) Glass.Ink else CinemaColors.Foreground
     Row(
-        modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(50))
+        modifier.fillMaxWidth().height(if (detail.isBlank()) 52.dp else 62.dp).clip(RoundedCornerShape(50))
             .background(if (focused) Glass.Light else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
                 role = Role.Button, onClick = onClick,
             )
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = ink, fontSize = 18.sp, modifier = Modifier.weight(1f))
-        Text("›", color = ink, fontSize = 24.sp)
+        Column(Modifier.weight(1f)) {
+            Text(label, color = ink, fontSize = 19.sp)
+            if (detail.isNotBlank()) Text(detail, color = ink.copy(alpha = 0.65f), fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (more) Text("›", color = ink, fontSize = 26.sp)
     }
 }
