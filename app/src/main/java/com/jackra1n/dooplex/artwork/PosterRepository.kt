@@ -206,7 +206,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         return bitmap
     }
 
-    /** Drops decoded posters, so a benchmark can start cold. */
+    /** Drops decoded posters; cards on screen keep theirs. */
     fun clearMemory() = synchronized(lock) {
         memory.clear()
         memoryBytes = 0L

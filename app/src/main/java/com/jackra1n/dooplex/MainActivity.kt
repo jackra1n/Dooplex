@@ -401,6 +401,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        Analytics.event("lifecycle", "trim" to level)
+        if (level == TRIM_MEMORY_UI_HIDDEN || level < TRIM_MEMORY_RUNNING_LOW) return
+        browser?.posters?.clearMemory()
+        clearWashes()
+    }
+
     override fun onStop() {
         super.onStop()
         Analytics.event("lifecycle", "stop" to true)
