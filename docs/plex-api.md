@@ -26,6 +26,25 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
 - The hero uses up to 8 movies and shows with background art, recent rows first (`HomeState`), and
   loads each one's details (`/library/metadata/<id>`) for its logo and summary.
 
+## Search
+
+- `GET /hubs/search?query=<text>&limit=24` returns one hub per kind. Dooplex keeps `movie`, `show`
+  and `episode` hubs in that fixed order, so rows never move under someone typing.
+- A single character returns nothing, so searching starts at two (`SearchState.MIN_QUERY`), 300 ms
+  after the last keystroke.
+
+## Watchlist
+
+- The watchlist is on plex.tv's Discover service, not on the server:
+  `GET https://discover.provider.plex.tv/library/sections/watchlist/all?sort=watchlistedAt:desc`
+  with the account token, paged 100 at a time (`X-Plex-Container-Start` / `-Size`; above 100
+  answers 400).
+- Entries are identified by `plex://movie/…` or `plex://show/…` ids. The server's copies are found
+  with `GET /library/all?type=1|2&guid=<ids>`, at most 40 ids per request, each id encoded on its
+  own and joined with a literal comma (`%2C` or repeating `guid=` does not work). Ids the server
+  lacks are simply absent.
+- Only matched titles are shown, since only they can play; the rest are counted under the title.
+
 ## Libraries and artwork
 
 - Libraries load 96 items per page, seasons and episodes 40 (`PlexClient` caps any page at 200);

@@ -24,24 +24,6 @@ GPU drops some cached textures before the visit, but without adb we cannot trace
 
 **Status:** unsolved; we work without it. See [zidoo-box.md](zidoo-box.md) for what we use instead.
 
-## The web installer answers HTTP 400 even when it installed the app
-
-**Symptom:** uploading to `http://<box>:18888` returns 400 with
-`next chunk does not start with boundary`, in a browser too, yet the APK installs.
-
-**Cause:** the firmware's multipart parser fails after it has already installed the file.
-
-**Status:** worked around: `mise run upload` treats any reply containing that message as success.
-
-## The web installer and control API have no authentication
-
-**Symptom:** anything on the network can install an APK through port 18888 and press remote keys
-through port 9529.
-
-**Cause:** Zidoo's firmware ships them that way.
-
-**Status:** cannot be fixed without root or adb. Keep the box on a trusted network.
-
 ## The box stops drawing while idle
 
 **Symptom:** an app opened remotely (or left alone) draws nothing until a key is pressed; analytics
@@ -51,16 +33,6 @@ showed "first frame after 62433 ms" (2026-10-26).
 
 **Status:** `tools/bench.py` presses Right before every run to wake it. Remember it when an
 automated test sees no frames.
-
-## The launcher kept the old icon after an update
-
-**Symptom:** after installing the build with the new icon (2026-10-27), the Zidoo launcher still
-showed the old one.
-
-**Cause:** probably the launcher's icon cache. The TV banner also still points at the square icon
-(`android:banner="@mipmap/ic_launcher"`).
-
-**Status:** open. A proper 640 × 360 banner is still to be made (see [design.md](design.md)).
 
 ## Memory use is about 350–370 MB
 

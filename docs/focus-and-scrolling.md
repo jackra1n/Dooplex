@@ -32,6 +32,11 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
 
 ## Tabs and the top bar
 
+- **Moving up into the bar lands on the current page's tab**, never on the account just because it
+  sits above the content: the bar is a focus group whose `onEnter` redirects Up to the active tab.
+- **Left from the first tab reaches the account**; the tabs' own Left and Right handling stops at
+  the ends, so this is explicit (`CollectionFocusState.account`).
+
 - **Confirming a tab lands on the first poster**: the bar calls
   `CollectionFocusState.enterContent(type)`, and the screen focuses its first item and scrolls to
   the top. Home focuses the hero.

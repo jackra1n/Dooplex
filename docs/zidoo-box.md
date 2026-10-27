@@ -13,21 +13,18 @@ our box (firmware as of October 2026).
 | Inputs | two USB-A ports, no USB-C |
 | System font | `sans-serif` is Roboto (`/system/etc/fonts.xml`) |
 
-Developer options are hidden: tapping the build number seven times says you are a developer but
-adds no menu. A small helper app that starts the developer settings activity opened it and showed
-USB debugging already on. There is no wireless debugging option.
+Developer options are hidden in Settings, and adb does not respond even with USB debugging on
+(see [known-issues.md](known-issues.md)), so development works through the services below.
 
 ## Services we use
 
 | Port | Service | Notes |
 | --- | --- | --- |
-| 18888 | Web installer | `POST` a multipart APK. Always answers 400 but installs (see [known-issues.md](known-issues.md)). |
+| 18888 | Web installer | `POST` a multipart APK. It answers 400 ("next chunk does not start with boundary") even when it installed; `mise run upload` accepts that. |
 | 9529 | Control center API | `GET /ZidooControlCenter/RemoteControl/sendkey?key=Key.Right` presses a key; `Apps/getApps` lists apps; `Apps/openApp?packageName=…` launches one (`startApp` does not exist). Answers `{"status":200}`. |
 | 9529 | Player status | `GET /ZidooVideoPlay/getPlayStatus` (some firmware: `/VideoPlay/…`), used during playback; see [native-player.md](native-player.md). |
-| 8022 | Termux sshd | `ssh -p 8022 <box>` as user `u0_a57`, key login. |
+| 8022 | Termux sshd | Optional: a shell on the box, if Termux and its `openssh` are installed. |
 | 5555 | adbd | Accepts connections, never answers. Unusable. |
-
-None of these ask for a password. Keep the box on a trusted network.
 
 ## Working without adb
 

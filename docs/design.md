@@ -35,6 +35,10 @@ Controls imitate glass without a live blur, which this GPU cannot afford (`Glass
 
 ## The top bar
 
+The bar holds, from the left: the account, then a glass track with Home, the Movies and TV Shows
+libraries (named after the library), a bookmark icon for Watchlist and a magnifier for Search. Icon
+tabs are square and use the same light pill as text tabs.
+
 One layout on every page: a 5% safe margin at the sides and top (96 px and
 54 px on a 1920 × 1080 screen), with sizes scaled by `screenWidthDp / 1920`. The account bubble sits
 at the left margin and the tab track is centred on the screen, never on the page content.
@@ -43,6 +47,13 @@ Each page draws its own copy, so the copies must line up. Home gives the bar the
 pages put it in their header and widen it back to the full screen with `Modifier.bleed` (the Movies
 grid stops short of the alphabet rail). Before this (fixed 2026-10-27) the bar jumped about 21 dp
 sideways when switching between Home and Movies.
+
+## Library header
+
+Movies and TV Shows put a row of quiet text tabs under the bar (`TextTab`): one per library when the
+server has more than one of that kind, then Sort and Unwatched on the right. Text at rest, a plate
+when selected, the light pill when focused. There is no on-screen back button; the remote's Back
+goes back.
 
 ## Account menu and messages
 
@@ -75,11 +86,8 @@ keeping their speed.
 - **Wordmark:** "DOOPLEX" in Roboto Bold, uppercase, widely spaced (30 sp with 7 sp tracking on
   the start screen). Roboto is the box's system font, so nothing extra is bundled. The owner likes
   this wordmark as it is; keep it.
-- **App icon (2026-10-27):** two overlapping glowing amber discs with a play triangle, made with an
-  AI image generator from the icon design brief; check that generator's terms before the first
-  public release. It is an adaptive icon (`mipmap-anydpi-v26`) with an opaque foreground on a
-  `#101012` background. The source image was re-centred on its discs with a wider dark margin so
-  the discs fit inside the launcher's safe circle. The triangle in the artwork sits a few pixels
-  below the discs' centre; we left it.
+- **App icon:** two overlapping glowing amber discs with a play triangle, as an adaptive icon
+  (`mipmap-anydpi-v26`) with an opaque foreground on `#101012`. It was made with an AI image
+  generator; check that generator's terms before the first public release.
 - **TV banner:** still to do. Android TV launchers want a 640 × 360 px banner with the symbol and
   the wordmark; the manifest currently reuses the square icon.

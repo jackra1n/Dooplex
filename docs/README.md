@@ -28,7 +28,9 @@ Packages under `app/src/main/java/com/jackra1n/dooplex/`, one per feature:
 | *(root)* | `MainActivity` (navigation between screens, benchmark commands) and `DooplexApplication`. |
 | `home` | The Home screen and its state. |
 | `library` | Movies and TV Shows grids, a show's seasons and episodes, and their states. |
-| `details` | Movie details. |
+| `details` | Movie details, and the loader search and watchlist use to open them. |
+| `search` | The search page and its state. |
+| `watchlist` | The watchlist page and its state. |
 | `setup` | Sign-in, server and library pickers, the start screen. |
 | `playback` | Handing off to Zidoo's player (or another player) and reporting progress to Plex. |
 | `artwork` | Poster loading and caching, artwork painters, the background wash. |
