@@ -52,6 +52,14 @@ The endpoints Dooplex uses and the details that were not obvious. Account calls 
 - The watchlist loads when a server connects, so every details page knows whether its title is on
   it (`LocalWatchlist`).
 
+## Title menu
+
+- Media info is the title's `/library/metadata/<id>`: every `Media` version, its `Part` files, and
+  each part's `Stream`s (`streamType` 1 video, 2 audio, 3 subtitles), shown as label/value
+  sections (`PlexMediaInfo`).
+- Mark as watched or unwatched is `GET /:/scrobble` or `/:/unscrobble` with
+  `identifier=com.plexapp.plugins.library&key=<id>`; on a season or show it covers every episode.
+
 ## Libraries and artwork
 
 - Libraries load 96 items per page, seasons and episodes 40 (`PlexClient` caps any page at 200);

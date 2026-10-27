@@ -77,6 +77,12 @@ Selecting it opens a small glass panel under it (`AccountMenu.kt`): **Switch ser
 current server's name), a divider, then **Sign out**, which asks once more because linking again
 means scanning the sign-in code. Rows light up like the focused tab (`Glass.Light` with dark ink).
 
+Holding OK on a poster or episode, or pressing the remote's Menu key, opens the title's menu
+(`ItemMenu.kt`), centred on screen: **Media info** for movies and episodes, **Mark as watched** or
+**unwatched**, and **Add to** or **Remove from watchlist** for movies and shows. Menus ignore the
+held OK that opened them, so letting go never chooses a row. Media info is a scrolling glass panel
+(`MediaInfo.kt`); Up and Down scroll it and Back closes it.
+
 Home has no error area, so failures there (such as no video player installed) appear as a short
 message at the bottom (`MessageToast`) and clear after 6 s. Library pages show errors in their
 header instead.
