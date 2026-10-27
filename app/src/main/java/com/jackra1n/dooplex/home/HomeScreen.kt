@@ -80,7 +80,6 @@ import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.Text
-import com.jackra1n.dooplex.ui.WhenVisible
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -154,14 +153,11 @@ internal fun HomeScreen(
         Analytics.mark("hero:swap")
         shown = details
     }
-    WhenVisible { visible ->
-        val interactive = enabled && visible
-        LaunchedEffect(heroIndex, heroes.size, interactive) {
-            if (!interactive || heroes.size < 2) return@LaunchedEffect
-            heroes.getOrNull((heroIndex + 1).mod(heroes.size))?.let { state.heroDetails(it) }
-            delay(HERO_SECONDS * 1000)
-            if (listState.firstVisibleItemIndex == 0) page(1)
-        }
+    LaunchedEffect(heroIndex, heroes.size, enabled) {
+        if (!enabled || heroes.size < 2) return@LaunchedEffect
+        heroes.getOrNull((heroIndex + 1).mod(heroes.size))?.let { state.heroDetails(it) }
+        delay(HERO_SECONDS * 1000)
+        if (listState.firstVisibleItemIndex == 0) page(1)
     }
     fun focusHero() {
         scope.launch {
@@ -172,15 +168,12 @@ internal fun HomeScreen(
     }
 
     // The first focus waits for the hero when there is one; later returns restore the last card.
-    WhenVisible { visible ->
-        val interactive = enabled && visible
-        LaunchedEffect(interactive, focus.navigationType) {
-            if (!interactive || focus.navigationType != null || state.selectedMovie != null) return@LaunchedEffect
-            snapshotFlow { shown != null || !state.loading && state.heroes.isEmpty() || state.error != null }.first { it }
-            withFrameNanos { }
-            if (!focusedOnce && shown != null) heroPlay.requestFocus() else content.requestFocus()
-            focusedOnce = true
-        }
+    LaunchedEffect(enabled, focus.navigationType) {
+        if (!enabled || focus.navigationType != null || state.selectedMovie != null) return@LaunchedEffect
+        snapshotFlow { shown != null || !state.loading && state.heroes.isEmpty() || state.error != null }.first { it }
+        withFrameNanos { }
+        if (!focusedOnce && shown != null) heroPlay.requestFocus() else content.requestFocus()
+        focusedOnce = true
     }
     LaunchedEffect(focus.headerEpoch) {
         if (focus.headerRoute != "home") return@LaunchedEffect
@@ -192,11 +185,8 @@ internal fun HomeScreen(
         focusHero()
         focus.completeContent("home")
     }
-    WhenVisible { visible ->
-        val interactive = enabled && visible
-        BackHandler(enabled = interactive && selected == null) {
-            if (!heroFocused && shown != null) focusHero() else onBack()
-        }
+    BackHandler(enabled = enabled && selected == null) {
+        if (!heroFocused && shown != null) focusHero() else onBack()
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().then(if (selected != null) Modifier.clearAndSetSemantics { } else Modifier)) {

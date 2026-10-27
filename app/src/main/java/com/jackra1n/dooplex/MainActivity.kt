@@ -56,7 +56,6 @@ import com.jackra1n.dooplex.setup.PlexBrowserState
 import com.jackra1n.dooplex.setup.StartScreen
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
-import com.jackra1n.dooplex.ui.KeptScreen
 import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.ui.theme.DooplexTheme
 import com.jackra1n.dooplex.watchlist.WatchlistScreen
@@ -171,57 +170,40 @@ class MainActivity : ComponentActivity() {
                             onSignOut = ::signOut,
                         )
                     }
-                    val shown = when {
-                        current != null -> current
-                        home != null -> "home"
-                        child != null -> "child"
-                        else -> library?.type
-                    }
-                    homeState?.let { kept ->
-                        key(kept) {
-                            KeptScreen(shown == "home") {
-                                destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
-                                    HomeScreen(
-                                        state = kept,
-                                        posters = posters,
-                                        navigation = navigation,
-                                        focus = collectionFocus,
-                                        enabled = !blocked,
-                                        onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                        onOpen = ::openFromHome,
-                                        onBack = ::leaveApp,
-                                        onReady = {
-                                            homeReady = true
-                                            Analytics.event("ready", "what" to "home")
-                                        },
-                                    )
-                                }
-                            }
+                    when {
+                        current == "search" -> searchState?.let {
+                            SearchScreen(
+                                state = it, posters = posters, serverName = serverName, navigation = navigation,
+                                focus = collectionFocus, enabled = !blocked,
+                                onPlay = ::play, onOpen = ::openFromHome, onBack = ::goHome,
+                            )
                         }
-                    }
-                    for (collection in listOfNotNull(movieLibrary, showLibrary)) key(collection) {
-                        val type = collection.library.type
-                        // The start screen covers Home, so the libraries draw once beneath it.
-                        KeptScreen(shown == type, warm = splash) {
-                            destinations.SaveableStateProvider("$serverId:$type:${collection.library.key}") {
-                                CollectionScreen(
-                                    state = collection,
+                        current == "watchlist" -> watchlistState?.let {
+                            WatchlistScreen(
+                                state = it, posters = posters, serverName = serverName, navigation = navigation,
+                                focus = collectionFocus, enabled = !blocked,
+                                onPlay = ::play, onOpen = ::openFromHome, onBack = ::goHome,
+                            )
+                        }
+                        home != null -> key(home) {
+                            destinations.SaveableStateProvider("$serverId:home:$homeEpoch") {
+                                HomeScreen(
+                                    state = home,
                                     posters = posters,
                                     navigation = navigation,
                                     focus = collectionFocus,
-                                    libraries = state.libraries.filter { it.type == type },
-                                    onLibrary = ::selectHeaderLibrary,
-                                    playbackRunning = blocked,
-                                    error = state.error,
-                                    onBack = ::goHome,
-                                    onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                    onOpenShow = ::openShow,
+                                    enabled = !blocked,
+                                    onPlay = ::play,
+                                    onOpen = ::openFromHome,
+                                    onBack = ::leaveApp,
+                                    onReady = {
+                                        homeReady = true
+                                        Analytics.event("ready", "what" to "home")
+                                    },
                                 )
                             }
                         }
-                    }
-                    if (library != null && child != null) {
-                        destinations.SaveableStateProvider("$serverId:show:${child.path}") {
+                        child != null -> destinations.SaveableStateProvider("$serverId:show:${child.path}") {
                             ShowsScreen(
                                 state = child,
                                 posters = posters,
@@ -233,23 +215,24 @@ class MainActivity : ComponentActivity() {
                                 focus = collectionFocus,
                             )
                         }
-                    }
-                    when (current) {
-                        "search" -> searchState?.let {
-                            SearchScreen(
-                                state = it, posters = posters, serverName = serverName, navigation = navigation,
-                                focus = collectionFocus, enabled = !blocked,
-                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                onOpen = ::openFromHome, onBack = ::goHome,
-                            )
-                        }
-                        "watchlist" -> watchlistState?.let {
-                            WatchlistScreen(
-                                state = it, posters = posters, serverName = serverName, navigation = navigation,
-                                focus = collectionFocus, enabled = !blocked,
-                                onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
-                                onOpen = ::openFromHome, onBack = ::goHome,
-                            )
+                        library != null -> (if (library.type == "movie") movieLibrary else showLibrary)?.let { collection ->
+                            key(collection) {
+                                destinations.SaveableStateProvider("$serverId:${library.type}:${library.key}") {
+                                    CollectionScreen(
+                                        state = collection,
+                                        posters = posters,
+                                        navigation = navigation,
+                                        focus = collectionFocus,
+                                        libraries = state.libraries.filter { it.type == library.type },
+                                        onLibrary = ::selectHeaderLibrary,
+                                        playbackRunning = blocked,
+                                        error = state.error,
+                                        onBack = ::goHome,
+                                        onPlay = ::play,
+                                        onOpenShow = ::openShow,
+                                    )
+                                }
+                            }
                         }
                     }
                     // These pages have no error area of their own, so failures there (starting playback) show briefly.
@@ -482,7 +465,7 @@ class MainActivity : ComponentActivity() {
         openHome()
     }
 
-    /** The saved libraries are built hidden behind the start screen, so even the first switch is instant. */
+    /** The saved libraries start loading behind the start screen, so their first visit has titles ready. */
     private fun prepareLibraries(selected: PlexConnection) {
         libraryOf("movie")?.let {
             movieLibrary = CollectionLibraryState(it, selected, lifecycleScope)

@@ -46,11 +46,21 @@ focus requests and defaults TV scrolling to the 30% pivot, so every workaround h
 ([measuring-performance.md](measuring-performance.md)), and read the source of anything every frame
 goes through.
 
-## Visited screens stay alive
+## Screens are rebuilt on every tab switch
 
-Home, Movies and TV Shows are built once and then hidden and shown, instead of being rebuilt on
-every tab switch (which cost 40–100 ms each). This has enough rules of its own to need
-[kept-screens.md](kept-screens.md).
+**Decision (2026-10-27):** only the current screen is composed. Each tab switch rebuilds it, which
+costs a 40–100 ms hitch. The screens' states (loaded titles, scroll position) stay in memory, so
+nothing is fetched again.
+
+**Why:** keeping Home, Movies and TV Shows composed and hidden made repeat switches free of slow
+frames, but added about 100 MB of memory (PSS 125 → 227 MB in the session after it landed) and the
+most fragile code in the app: hidden screens parked above the window, focus blocked from entering
+them, shared focus targets attached only in the visible copy. The first Movies visit still
+stuttered anyway. Not worth it on a box where Android may kill us while the player runs.
+
+Simpler variants failed: not placing a hidden screen releases its layers, so showing it again
+re-records every card (33–64 ms, no better than rebuilding); alpha 0 in place lets focus search pick
+the hidden screen's cards.
 
 ## A tab switch is not a busy action
 
@@ -79,7 +89,7 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 
 - Rounded clipping of poster cards, their border and panel background.
 - The poster title and subtitle text. (Text was about 40% of a screen's first build, 731 → 412 ms
-  over budget across 8 switches, but kept screens made that build rare.)
+  over budget across 8 switches.)
 - The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`).
 - The background wash itself.
 

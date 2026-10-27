@@ -62,7 +62,7 @@ Pitfalls:
 | Movies grid, warm | 0.0% | 0.7% | posters downloading during the run |
 | Movies grid, cold disk | 0.0% | 0.2% | |
 | TV Shows grid | 0.1% | 0.4% | |
-| Tab switches | 2.0% | 5.0% | all from the first Movies visit; see [known-issues.md](known-issues.md) |
+| Tab switches | 2.0% | 5.0% | with kept screens (since removed); see [known-issues.md](known-issues.md) |
 
 Before the October work, Home stutters were RenderThread-bound: the main thread waited 47–70 ms in
 `nSyncAndDrawFrame` while `cmd` took 60–80 ms. What changed since is in

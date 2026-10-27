@@ -11,7 +11,6 @@ a measured stutter, a crash, or an evening on the Zidoo.
 | [dev-workflow.md](dev-workflow.md) | Building, installing, crash reports, analytics, traces. |
 | [measuring-performance.md](measuring-performance.md) | How we measure smoothness, what the numbers mean, current baselines. |
 | [performance-decisions.md](performance-decisions.md) | What we changed for smoothness, what we tried that did not matter, and why. |
-| [kept-screens.md](kept-screens.md) | How Home, Movies and TV Shows stay alive so tab switches are instant. |
 | [focus-and-scrolling.md](focus-and-scrolling.md) | D-pad focus and scroll rules, and the bugs each one fixed. |
 | [poster-pipeline.md](poster-pipeline.md) | How artwork is fetched, cached and handed to the GPU. |
 | [r8-release-builds.md](r8-release-builds.md) | The R8 launch crash and the guards that keep it from returning. |
@@ -35,7 +34,7 @@ Packages under `app/src/main/java/com/jackra1n/dooplex/`, one per feature:
 | `playback` | Handing off to Zidoo's player (or another player) and reporting progress to Plex. |
 | `artwork` | Poster loading and caching, artwork painters, the background wash. |
 | `plex` | Plex clients, saved account and navigation, models. |
-| `ui` | Shared components: top bar, buttons, glass, poster card, kept screens, grid scroller; `ui/theme` holds colours and type. |
+| `ui` | Shared components: top bar, buttons, glass, poster card, grid scroller; `ui/theme` holds colours and type. |
 | `diagnostics` | Analytics and crash reporting for development builds. |
 
 ## How to write these docs

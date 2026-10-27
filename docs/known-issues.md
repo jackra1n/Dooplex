@@ -3,17 +3,17 @@
 Check here before investigating something from scratch. Each entry: what you see, why, and where
 it stands. Add one whenever a problem took a session to understand.
 
-## The first Movies visit after a start stutters for about 250 ms
+## Tab switches hitch for 40–100 ms
 
-**Symptom:** the first switch to Movies after the app (or Home) starts shows three or four frames
-whose GPU part (`cmd`) takes 50–80 ms. Every later switch is clean (measured 2026-10-26: 7 of 8
-switches with no slow frame).
+**Symptom:** switching tabs drops a few frames while the new screen is built and drawn. The first
+Movies visit after a start is worst: three or four frames whose GPU part (`cmd`) takes 50–80 ms.
 
-**Cause:** unknown. It is GPU work on the first real showing of that screen. Drawing the libraries
-once under the start screen (`KeptScreen(warm = splash)`) did not remove it. Our guess is that the
-GPU drops some cached textures before the visit, but without adb we cannot trace the RenderThread.
+**Cause:** every switch rebuilds the screen. Keeping screens alive removed the repeat-switch hitch
+but cost about 100 MB, and even drawing the libraries once under the start screen did not fix the
+first Movies visit. Our guess for that one is that the GPU drops some cached textures before the
+visit, but without adb we cannot trace the RenderThread.
 
-**Status:** open. See [kept-screens.md](kept-screens.md).
+**Status:** accepted; see [performance-decisions.md](performance-decisions.md).
 
 ## adb does not work on the Zidoo
 
@@ -34,12 +34,12 @@ showed "first frame after 62433 ms" (2026-10-26).
 **Status:** `tools/bench.py` presses Right before every run to wake it. Remember it when an
 automated test sees no frames.
 
-## Memory use is about 350–370 MB
+## Memory use was about 350–370 MB
 
-**Symptom:** analytics reports a PSS of 346–373 MB (2026-10-26), up from about 120 MB.
+**Symptom:** analytics reported a PSS of 346–373 MB (2026-10-26), up from about 120 MB.
 
-**Cause:** three screens kept alive, plus regular bitmaps that keep a CPU copy of every poster next
-to its GPU texture. Both were chosen for smoothness; see
-[performance-decisions.md](performance-decisions.md).
+**Cause:** about 100 MB came from keeping screens alive, about 100 MB from regular bitmaps that keep
+a CPU copy of every poster next to its GPU texture. Screens are no longer kept (2026-10-27); the
+bitmaps stay for smooth scrolling. See [performance-decisions.md](performance-decisions.md).
 
-**Status:** accepted for now. Watch it if Android starts killing Dooplex while the player runs.
+**Status:** measure again after the kept-screen removal. Watch it if Android starts killing Dooplex while the player runs.

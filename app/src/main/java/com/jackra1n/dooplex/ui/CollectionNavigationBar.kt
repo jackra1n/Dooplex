@@ -179,9 +179,8 @@ internal fun CollectionNavigationBar(
         }
     }
     var focusedType by remember { mutableStateOf<String?>(null) }
-    val visible = LocalScreenVisible.current
-    LaunchedEffect(activeType, focus.navigationEpoch, visible) {
-        if (visible) focus.navigationType?.let { focus.tab(it).requestFocus() }
+    LaunchedEffect(activeType, focus.navigationEpoch) {
+        focus.navigationType?.let { focus.tab(it).requestFocus() }
     }
     val density = LocalDensity.current
     val unit = LocalConfiguration.current.screenWidthDp.dp / 1920f
@@ -225,7 +224,7 @@ internal fun CollectionNavigationBar(
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             AccountChip(accountName, accountAvatar, serverName, unit, labelStyle, enabled,
-                if (visible) Modifier.focusRequester(focus.account) else Modifier, onDown, onSwitchServer, onSignOut)
+                Modifier.focusRequester(focus.account), onDown, onSwitchServer, onSignOut)
         }
         if (tabs.isNotEmpty()) Row(
             Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
@@ -260,7 +259,7 @@ internal fun CollectionNavigationBar(
                 Box(
                     Modifier.width(with(density) { tabWidths[index].toDp() })
                         .height(with(density) { pillHeight.toDp() })
-                        .then(if (visible) Modifier.focusRequester(focus.tab(type)) else Modifier)
+                        .focusRequester(focus.tab(type))
                         .onPreviewKeyEvent { event ->
                             when (event.key) {
                                 Key.DirectionDown -> {

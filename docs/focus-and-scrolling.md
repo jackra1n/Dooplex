@@ -44,8 +44,6 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   skipped while an entry is pending (`focus.contentType == state.library.type`). Bug fixed in
   October 2026: switching Movies to TV Shows restored the old position before layout and scrolled
   the header with the top bar out of view.
-- **Focus targets that several screens share** (the tab `FocusRequester`s) attach only in the visible
-  screen; see [kept-screens.md](kept-screens.md).
 
 ## Back
 

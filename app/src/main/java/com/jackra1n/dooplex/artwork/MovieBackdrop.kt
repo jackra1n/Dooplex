@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexBrowseItem
-import com.jackra1n.dooplex.ui.LocalScreenVisible
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import java.io.IOException
 import kotlin.math.abs
@@ -71,9 +70,8 @@ internal fun MovieBackdrop(
     val artworkHeight = artworkWidth * 3 / 2
     var loaded by remember(posters, path, artworkWidth) { mutableStateOf<MovieAtmosphere?>(null) }
     val cached = path?.let { posters.cachedAtmosphere(it, artworkWidth, artworkHeight) }
-    val shown = active && LocalScreenVisible.current
-    LaunchedEffect(posters, path, artworkWidth, shown) {
-        if (!shown || path == null || cached != null) return@LaunchedEffect
+    LaunchedEffect(posters, path, artworkWidth, active) {
+        if (!active || path == null || cached != null) return@LaunchedEffect
         try {
             posters.load(path, artworkWidth, artworkHeight)
             currentCoroutineContext().ensureActive()
