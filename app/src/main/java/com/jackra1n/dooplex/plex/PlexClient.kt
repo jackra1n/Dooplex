@@ -546,41 +546,43 @@ class PlexClient(private val connection: PlexConnection) {
         currentCoroutineContext().ensureActive()
         var http: HttpURLConnection? = null
         try {
-            val client = URI(url(path, parameters, lists)).toURL().openConnection() as HttpURLConnection
-            http = client
-            client.requestMethod = "GET"
-            // Never forward credentials to a redirect target, even on a successful HTTP response.
-            client.instanceFollowRedirects = false
-            client.connectTimeout = 8_000
-            client.readTimeout = 8_000
-            client.useCaches = false
-            client.setRequestProperty("Accept", "application/json")
-            client.setRequestProperty("X-Plex-Token", connection.token)
-            identity.forEach { (name, value) -> client.setRequestProperty(name, value) }
-            if (sessionId != null) client.setRequestProperty("X-Plex-Session-Identifier", sessionId)
-            val status = client.responseCode
-            currentCoroutineContext().ensureActive()
-            if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
-                throw PlexRequestException("Plex server access was denied (HTTP $status); reconnect to the server.")
-            }
-            if (status !in 200..299) {
-                throw PlexRequestException("Plex $operation request failed (HTTP $status).")
-            }
-            val output = ByteArrayOutputStream()
-            client.inputStream.use { input ->
-                val buffer = ByteArray(8_192)
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (output.size() + count > MAX_RESPONSE_BYTES) {
-                        throw PlexRequestException("Plex $operation response was too large.")
-                    }
-                    output.write(buffer, 0, count)
+            return abortOnCancel({ http?.disconnect() }) {
+                val client = URI(url(path, parameters, lists)).toURL().openConnection() as HttpURLConnection
+                http = client
+                client.requestMethod = "GET"
+                // Never forward credentials to a redirect target, even on a successful HTTP response.
+                client.instanceFollowRedirects = false
+                client.connectTimeout = 8_000
+                client.readTimeout = 8_000
+                client.useCaches = false
+                client.setRequestProperty("Accept", "application/json")
+                client.setRequestProperty("X-Plex-Token", connection.token)
+                identity.forEach { (name, value) -> client.setRequestProperty(name, value) }
+                if (sessionId != null) client.setRequestProperty("X-Plex-Session-Identifier", sessionId)
+                val status = client.responseCode
+                currentCoroutineContext().ensureActive()
+                if (status == HttpURLConnection.HTTP_UNAUTHORIZED || status == HttpURLConnection.HTTP_FORBIDDEN) {
+                    throw PlexRequestException("Plex server access was denied (HTTP $status); reconnect to the server.")
                 }
+                if (status !in 200..299) {
+                    throw PlexRequestException("Plex $operation request failed (HTTP $status).")
+                }
+                val output = ByteArrayOutputStream()
+                client.inputStream.use { input ->
+                    val buffer = ByteArray(8_192)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (output.size() + count > MAX_RESPONSE_BYTES) {
+                            throw PlexRequestException("Plex $operation response was too large.")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                output.toString(Charsets.UTF_8.name())
             }
-            currentCoroutineContext().ensureActive()
-            return output.toString(Charsets.UTF_8.name())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: PlexRequestException) {

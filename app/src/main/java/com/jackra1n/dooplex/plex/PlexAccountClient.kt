@@ -216,49 +216,51 @@ class PlexAccountClient(private val clientId: String) {
         currentCoroutineContext().ensureActive()
         var http: HttpURLConnection? = null
         try {
-            val client = URI(url).toURL().openConnection() as HttpURLConnection
-            http = client
-            client.requestMethod = method
-            client.instanceFollowRedirects = false
-            client.connectTimeout = 8_000
-            client.readTimeout = 8_000
-            client.useCaches = false
-            client.setRequestProperty("Accept", accept)
-            client.setRequestProperty("X-Plex-Client-Identifier", clientId)
-            client.setRequestProperty("X-Plex-Product", "Dooplex")
-            client.setRequestProperty("X-Plex-Version", "1.0")
-            client.setRequestProperty("X-Plex-Platform", "Android")
-            client.setRequestProperty("X-Plex-Device", "Zidoo")
-            client.setRequestProperty("X-Plex-Device-Name", "Dooplex on Zidoo")
-            client.setRequestProperty("X-Plex-Provides", "player")
-            if (token != null) client.setRequestProperty("X-Plex-Token", token)
-            if (body != null) {
-                client.doOutput = true
-                client.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                val bytes = body.toByteArray(Charsets.UTF_8)
-                client.setFixedLengthStreamingMode(bytes.size)
-                client.outputStream.use { it.write(bytes) }
-            }
-            val status = client.responseCode
-            currentCoroutineContext().ensureActive()
-            if (pinPoll && status in setOf(404, 410)) throw RequestFailure("The Plex link code expired. Request a new code.")
-            if (accountRequest && token != null && status == HttpURLConnection.HTTP_UNAUTHORIZED) {
-                throw PlexAuthenticationException("Plex sign-in expired or was revoked. Link your account again.")
-            }
-            if (status !in 200..299) throw RequestFailure("Plex request failed (HTTP $status).")
-            val output = ByteArrayOutputStream()
-            client.inputStream.use { input ->
-                val buffer = ByteArray(8_192)
-                while (true) {
-                    currentCoroutineContext().ensureActive()
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (output.size() + count > 4 * 1024 * 1024) throw RequestFailure("Plex response was too large.")
-                    output.write(buffer, 0, count)
+            return abortOnCancel({ http?.disconnect() }) {
+                val client = URI(url).toURL().openConnection() as HttpURLConnection
+                http = client
+                client.requestMethod = method
+                client.instanceFollowRedirects = false
+                client.connectTimeout = 8_000
+                client.readTimeout = 8_000
+                client.useCaches = false
+                client.setRequestProperty("Accept", accept)
+                client.setRequestProperty("X-Plex-Client-Identifier", clientId)
+                client.setRequestProperty("X-Plex-Product", "Dooplex")
+                client.setRequestProperty("X-Plex-Version", "1.0")
+                client.setRequestProperty("X-Plex-Platform", "Android")
+                client.setRequestProperty("X-Plex-Device", "Zidoo")
+                client.setRequestProperty("X-Plex-Device-Name", "Dooplex on Zidoo")
+                client.setRequestProperty("X-Plex-Provides", "player")
+                if (token != null) client.setRequestProperty("X-Plex-Token", token)
+                if (body != null) {
+                    client.doOutput = true
+                    client.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                    val bytes = body.toByteArray(Charsets.UTF_8)
+                    client.setFixedLengthStreamingMode(bytes.size)
+                    client.outputStream.use { it.write(bytes) }
                 }
+                val status = client.responseCode
+                currentCoroutineContext().ensureActive()
+                if (pinPoll && status in setOf(404, 410)) throw RequestFailure("The Plex link code expired. Request a new code.")
+                if (accountRequest && token != null && status == HttpURLConnection.HTTP_UNAUTHORIZED) {
+                    throw PlexAuthenticationException("Plex sign-in expired or was revoked. Link your account again.")
+                }
+                if (status !in 200..299) throw RequestFailure("Plex request failed (HTTP $status).")
+                val output = ByteArrayOutputStream()
+                client.inputStream.use { input ->
+                    val buffer = ByteArray(8_192)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (output.size() + count > 4 * 1024 * 1024) throw RequestFailure("Plex response was too large.")
+                        output.write(buffer, 0, count)
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                output.toByteArray()
             }
-            currentCoroutineContext().ensureActive()
-            return output.toByteArray()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: PlexAuthenticationException) {
