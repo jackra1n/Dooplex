@@ -51,6 +51,13 @@ data class PlexBrowseItem(
     val type: String = "",
     val libraryKey: String? = null,
     val guid: String = "",
+    /** A season's or episode's number within its parent. */
+    val index: Int = 0,
+    /** An episode's season number. */
+    val parentIndex: Int = 0,
+    /** The show a season or episode belongs to. */
+    val showKey: String? = null,
+    val showTitle: String = "",
 )
 
 /** One server-arranged Home shelf, Continue Watching first; empty shelves are never kept. */

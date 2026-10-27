@@ -28,7 +28,7 @@ class MovieDetailsLoader(private val client: PlexClient, private val scope: Coro
         error = null
         job = scope.launch {
             try {
-                movie = client.movieDetails(item.ratingKey)
+                movie = client.details(item.ratingKey)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {

@@ -138,10 +138,13 @@ class PlexClient(private val connection: PlexConnection) {
     }
 
     /** Refresh one show without accepting movie/season/episode metadata as its replacement. */
-    suspend fun showMetadata(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
+    suspend fun showMetadata(ratingKey: String): PlexBrowseItem = showDetails(ratingKey).first
+
+    /** The show and the episode Plex would play next, when there is one. */
+    suspend fun showDetails(ratingKey: String): Pair<PlexBrowseItem, PlexBrowseItem?> = withContext(Dispatchers.IO) {
         requireRatingKey(ratingKey)
         try {
-            val metadata = JSONObject(request("/library/metadata/$ratingKey", operation = "show metadata"))
+            val metadata = JSONObject(request("/library/metadata/$ratingKey", mapOf("includeOnDeck" to "1"), operation = "show metadata"))
                 .getJSONObject("MediaContainer").optJSONArray("Metadata")
                 ?: throw IOException("Plex returned no show metadata.")
             if (metadata.length() != 1) throw IOException("Plex did not return one show.")
@@ -149,26 +152,28 @@ class PlexClient(private val connection: PlexConnection) {
             if (source.optString("ratingKey") != ratingKey || source.optString("type") != "show") {
                 throw IOException("Plex returned metadata for a different show.")
             }
-            parseBrowseItem(source) ?: throw IOException("Plex returned invalid show metadata.")
+            val show = parseBrowseItem(source) ?: throw IOException("Plex returned invalid show metadata.")
+            val next = source.optJSONObject("OnDeck")?.optJSONArray("Metadata")?.optJSONObject(0)?.let { parseBrowseItem(it) }
+            show to next?.takeIf { it.type == "episode" }
         } catch (_: JSONException) {
             throw IOException("Plex returned invalid show metadata.")
         }
     }
 
-    suspend fun movieDetails(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
+    suspend fun details(ratingKey: String): PlexBrowseItem = withContext(Dispatchers.IO) {
         requireRatingKey(ratingKey)
         try {
-            val metadata = JSONObject(request("/library/metadata/$ratingKey", operation = "movie details"))
+            val metadata = JSONObject(request("/library/metadata/$ratingKey", operation = "details"))
                 .getJSONObject("MediaContainer").optJSONArray("Metadata")
-                ?: throw IOException("Plex returned no movie details.")
-            if (metadata.length() != 1) throw IOException("Plex did not return one movie.")
+                ?: throw IOException("Plex returned no details.")
+            if (metadata.length() != 1) throw IOException("Plex did not return one title.")
             val source = metadata.getJSONObject(0)
-            if (source.optString("ratingKey") != ratingKey || source.optString("type") != "movie") {
+            if (source.optString("ratingKey") != ratingKey || source.optString("type") !in setOf("movie", "episode")) {
                 throw IOException("Plex returned details for a different title.")
             }
-            parseBrowseItem(source) ?: throw IOException("Plex returned invalid movie details.")
+            parseBrowseItem(source) ?: throw IOException("Plex returned invalid details.")
         } catch (_: JSONException) {
-            throw IOException("Plex returned invalid movie details.")
+            throw IOException("Plex returned invalid details.")
         }
     }
 
@@ -285,7 +290,7 @@ class PlexClient(private val connection: PlexConnection) {
             rating = item.optDouble("rating").takeIf { it.isFinite() },
             contentRating = item.optString("contentRating"),
             videoResolution = media?.optString("videoResolution").orEmpty(),
-            artPath = (item.opt("art") as? String)?.takeIf { ART_PATH.matches(it) },
+            artPath = listOf("art", "grandparentArt").firstNotNullOfOrNull { (item.opt(it) as? String)?.takeIf(ART_PATH::matches) },
             tagline = (item.opt("tagline") as? String).orEmpty(),
             genres = item.tagNames("Genre"),
             directors = item.tagNames("Director"),
@@ -297,6 +302,10 @@ class PlexClient(private val connection: PlexConnection) {
             type = type,
             libraryKey = item.optString("librarySectionID").takeIf { RATING_KEY.matches(it) },
             guid = item.optString("guid"),
+            index = item.optInt("index"),
+            parentIndex = item.optInt("parentIndex"),
+            showKey = item.optString(if (type == "season") "parentRatingKey" else "grandparentRatingKey").takeIf { RATING_KEY.matches(it) },
+            showTitle = item.optString(if (type == "season") "parentTitle" else "grandparentTitle"),
         )
     }
 

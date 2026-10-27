@@ -71,7 +71,7 @@ class HomeState(val connection: PlexConnection, parentScope: CoroutineScope) {
         detailed[item.ratingKey]?.let { return it }
         val details = try {
             when (item.type) {
-                "movie" -> client.movieDetails(item.ratingKey)
+                "movie" -> client.details(item.ratingKey)
                 "show" -> client.showMetadata(item.ratingKey)
                 else -> item
             }
@@ -92,7 +92,7 @@ class HomeState(val connection: PlexConnection, parentScope: CoroutineScope) {
         detailsError = null
         detailsJob = scope.launch {
             try {
-                selectedMovie = client.movieDetails(movie.ratingKey)
+                selectedMovie = client.details(movie.ratingKey)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {

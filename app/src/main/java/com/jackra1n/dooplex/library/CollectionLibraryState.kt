@@ -460,7 +460,7 @@ class CollectionLibraryState(
     }
 
     private suspend fun loadMetadata(work: MetadataWork) {
-        val movie = if (isShow) client.showMetadata(work.ratingKey) else client.movieDetails(work.ratingKey)
+        val movie = if (isShow) client.showMetadata(work.ratingKey) else client.details(work.ratingKey)
         currentCoroutineContext().ensureActive()
         if (!isCurrent(work) || metadataVersions[work.ratingKey] != work.version) return
         val previous = cachedMovie(movie.ratingKey) ?: selectedMovie?.takeIf { it.ratingKey == movie.ratingKey }
