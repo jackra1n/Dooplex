@@ -110,9 +110,10 @@ class PlaybackService : Service() {
         )
         pollJob = scope.launch {
             val player = ZidooPlayer(this@PlaybackService)
-            try {
-                while (isActive) {
-                    delay(3_000)
+            var failures = 0
+            while (isActive) {
+                delay(3_000)
+                try {
                     val status = player.readStatus(media)
                     if (status == null) {
                         current.telemetryUnavailable = true
@@ -135,19 +136,18 @@ class PlaybackService : Service() {
                         detail = "Plex accepted the timeline update. Check its dashboard to verify the user and session details.",
                         running = true,
                     )
-                    if (status.state == "stopped") {
-                        releaseSession()
-                        return@launch
-                    }
+                    failures = 0
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (exception: Exception) {
+                    if (++failures < MAX_POLL_FAILURES) continue
+                    current.liveFailure = exception.message ?: "Could not read native-player state or report it to Plex."
+                    PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
+                        phase = "Live reporting failed",
+                        detail = current.liveFailure.orEmpty(),
+                    )
+                    return@launch
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (exception: Exception) {
-                current.liveFailure = exception.message ?: "Could not read native-player state or report it to Plex."
-                PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
-                    phase = "Live reporting failed",
-                    detail = current.liveFailure.orEmpty(),
-                )
             }
         }
     }
@@ -239,6 +239,7 @@ class PlaybackService : Service() {
 
     companion object {
         private const val CHANNEL = "plex-playback"
+        private const val MAX_POLL_FAILURES = 5
         private const val START = "com.jackra1n.dooplex.START_PLAYBACK"
         private const val FINISH = "com.jackra1n.dooplex.FINISH_PLAYBACK"
 
