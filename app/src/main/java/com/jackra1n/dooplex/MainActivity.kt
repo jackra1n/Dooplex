@@ -1,5 +1,6 @@
 package com.jackra1n.dooplex
 
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -31,9 +32,9 @@ import com.jackra1n.dooplex.library.CollectionScreen
 import com.jackra1n.dooplex.library.ShowBrowseLevel
 import com.jackra1n.dooplex.library.ShowBrowseState
 import com.jackra1n.dooplex.library.ShowsScreen
+import com.jackra1n.dooplex.playback.ExternalPlayer
 import com.jackra1n.dooplex.playback.PlaybackMonitor
 import com.jackra1n.dooplex.playback.PlaybackService
-import com.jackra1n.dooplex.playback.ZidooPlayer
 import com.jackra1n.dooplex.plex.PlexAccount
 import com.jackra1n.dooplex.plex.PlexAccountClient
 import com.jackra1n.dooplex.plex.PlexAccountStore
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
     private var choosingLibraryType by mutableStateOf<String?>(null)
     private var pendingMovie: String? = null
     private var pendingShow: ShowBrowseState? = null
+    private var playingDurationMs = 0L
     private var actionJob: Job? = null
     private var actionVersion = 0
 
@@ -93,7 +95,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val position = try {
-            ZidooPlayer.readResult(result.data)
+            ExternalPlayer.readResult(result.data, playingDurationMs)
         } catch (exception: IllegalStateException) {
             state = state.copy(error = exception.message)
             null
@@ -637,15 +639,19 @@ class MainActivity : ComponentActivity() {
         runAction {
             val original = PlexClient(selected).loadMedia(item.ratingKey)
             val media = if (startFromBeginning) original.copy(resumePositionMs = 0) else original
-            val intent = ZidooPlayer(this).createIntent(media)
+            val launch = ExternalPlayer(this).createLaunch(media)
             pendingMovie = item.ratingKey.takeIf { activeLibrary?.type == "movie" }
             pendingShow = showHistory.lastOrNull().takeIf { activeLibrary?.type == "show" }
-            PlaybackService.begin(this, selected, media)
+            playingDurationMs = media.durationMs
+            PlaybackService.begin(this, selected, media, launch.liveStatus)
             try {
-                nativePlayer.launch(intent)
+                nativePlayer.launch(launch.intent)
+            } catch (_: ActivityNotFoundException) {
+                PlaybackService.finish(this, null)
+                throw IllegalStateException("No video player is installed. Install one, such as VLC or Just Player, and try again.")
             } catch (_: Exception) {
                 PlaybackService.finish(this, null)
-                throw IllegalStateException("Android could not launch Zidoo's native player.")
+                throw IllegalStateException("Android could not start the video player.")
             }
         }
     }

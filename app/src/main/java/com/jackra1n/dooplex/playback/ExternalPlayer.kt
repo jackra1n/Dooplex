@@ -13,22 +13,26 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-class ZidooPlayer(private val context: Context) {
-    fun createIntent(media: PlaybackMedia): Intent {
+/**
+ * The player app playback is handed to: Zidoo's own when the box has it, otherwise whichever video
+ * player Android opens. Zidoo's, VLC, MX Player and Just Player all read these extras; only Zidoo's
+ * reports live progress (see [readStatus]).
+ */
+class ExternalPlayer(private val context: Context) {
+    class Launch(val intent: Intent, val liveStatus: Boolean)
+
+    fun createLaunch(media: PlaybackMedia): Launch {
         mediaUri(media.streamUrl)
         require(media.resumePositionMs in 0..Int.MAX_VALUE.toLong()) {
-            "The native Zidoo player requires a resume position between zero and 2,147,483,647 milliseconds."
+            "The video player requires a resume position between zero and 2,147,483,647 milliseconds."
         }
-        val component = PLAYER_COMPONENTS.firstOrNull { isAvailable(it) }
-            ?: throw IllegalStateException(
-                "Zidoo's native player is unavailable. Enable or install the firmware's com.zidoo.player " +
-                    "or com.android.gallery3d player, and allow Dooplex to discover these packages. " +
-                    "No generic video player will be used."
-            )
-        return Intent(Intent.ACTION_VIEW).apply {
+        val zidoo = ZIDOO_COMPONENTS.firstOrNull { isAvailable(it) }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(media.streamUrl), "video/*")
-            this.component = component
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            if (zidoo != null) {
+                component = zidoo
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            }
             putExtra("title", media.title)
             putExtra("from_start", media.resumePositionMs == 0L)
             if (media.resumePositionMs > 0) {
@@ -36,6 +40,7 @@ class ZidooPlayer(private val context: Context) {
             }
             putExtra("return_result", true)
         }
+        return Launch(intent, liveStatus = zidoo != null)
     }
 
     /**
@@ -138,26 +143,33 @@ class ZidooPlayer(private val context: Context) {
 
     companion object {
         private const val MAX_STATUS_BYTES = 64 * 1024
-        private val PLAYER_COMPONENTS = listOf(
+        private val ZIDOO_COMPONENTS = listOf(
             ComponentName("com.zidoo.player", "com.zidoo.player.activity.PlayerActivity"),
             ComponentName("com.android.gallery3d", "com.android.gallery3d.app.MovieActivity"),
         )
         private val STATUS_ENDPOINTS = listOf("ZidooVideoPlay", "VideoPlay")
 
+        /**
+         * Where the player stopped. Zidoo's, MX Player and Just Player return `position`, VLC
+         * `extra_position`; MX Player and Just Player send no position after playing to the end.
+         */
         @Suppress("DEPRECATION")
-        fun readResult(data: Intent?): Long? {
-            if (data == null || !data.hasExtra("position")) return null
-            val position = try {
-                when (val value = data.extras?.get("position")) {
-                    is Int -> value.toLong()
-                    is Long -> value
-                    else -> throw IllegalStateException("Zidoo returned an unsupported result position type.")
-                }
+        fun readResult(data: Intent?, durationMs: Long): Long? {
+            val extras = data?.extras ?: return null
+            val (finished, value) = try {
+                (extras.getString("end_by") == "playback_completion") to (extras.get("position") ?: extras.get("extra_position"))
             } catch (_: android.os.BadParcelableException) {
-                throw IllegalStateException("Zidoo returned unreadable playback-result data.")
+                throw IllegalStateException("The video player returned unreadable playback-result data.")
+            }
+            if (finished) return durationMs.takeIf { it > 0 }
+            val position = when (value) {
+                null -> return null
+                is Int -> value.toLong()
+                is Long -> value
+                else -> throw IllegalStateException("The video player returned an unsupported position type.")
             }
             if (position < 0) {
-                throw IllegalStateException("Zidoo returned a negative playback-result position.")
+                throw IllegalStateException("The video player returned a negative position.")
             }
             return position // Zero is a real position, not a missing result.
         }

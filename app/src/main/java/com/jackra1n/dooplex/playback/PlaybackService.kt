@@ -42,7 +42,7 @@ class PlaybackService : Service() {
     private var pollJob: Job? = null
     private var session: Session? = null
 
-    private class Session(val client: PlexClient, val media: PlaybackMedia) {
+    private class Session(val client: PlexClient, val media: PlaybackMedia, val live: Boolean) {
         val id: String = UUID.randomUUID().toString()
         var observedPositionMs: Long? = null
         var liveReported = false
@@ -88,8 +88,19 @@ class PlaybackService : Service() {
             intent.getStringExtra("token").orEmpty(),
             intent.getStringExtra("clientId").orEmpty(),
         )
-        val current = Session(PlexClient(connection), media)
+        val current = Session(PlexClient(connection), media, live = intent.getBooleanExtra("liveStatus", false))
         session = current
+        // Only Zidoo's player reports live progress; other players report where they stopped.
+        if (!current.live) {
+            PlaybackMonitor.state.value = PlaybackProofStatus(
+                phase = "Playing in another app",
+                title = media.title,
+                durationMs = media.durationMs,
+                detail = "Plex gets the position when the player closes.",
+                running = true,
+            )
+            return
+        }
         PlaybackMonitor.state.value = PlaybackProofStatus(
             phase = "Waiting for native player",
             title = media.title,
@@ -98,7 +109,7 @@ class PlaybackService : Service() {
             running = true,
         )
         pollJob = scope.launch {
-            val player = ZidooPlayer(this@PlaybackService)
+            val player = ExternalPlayer(this@PlaybackService)
             try {
                 while (isActive) {
                     delay(3_000)
@@ -164,6 +175,7 @@ class PlaybackService : Service() {
                     current.client.timeline(current.media, "stopped", position, current.id)
                     PlaybackMonitor.state.value = PlaybackMonitor.state.value.copy(
                         phase = when {
+                            !current.live -> "Reported stopped to Plex"
                             current.liveFailure != null -> "Stopped; live reporting failed"
                             !current.liveReported -> "Stopped; live telemetry unavailable"
                             current.telemetryUnavailable -> "Stopped; last live telemetry unavailable"
@@ -171,6 +183,7 @@ class PlaybackService : Service() {
                         },
                         positionMs = position,
                         detail = current.liveFailure ?: when {
+                            !current.live -> "Final position sent from the video player."
                             !current.liveReported ->
                                 "Final position sent, but matching live telemetry was unavailable before the player returned."
                             current.telemetryUnavailable ->
@@ -229,8 +242,9 @@ class PlaybackService : Service() {
         private const val START = "com.jackra1n.dooplex.START_PLAYBACK"
         private const val FINISH = "com.jackra1n.dooplex.FINISH_PLAYBACK"
 
-        fun begin(context: Context, connection: PlexConnection, media: PlaybackMedia) {
+        fun begin(context: Context, connection: PlexConnection, media: PlaybackMedia, liveStatus: Boolean) {
             val intent = Intent(context, PlaybackService::class.java).setAction(START)
+                .putExtra("liveStatus", liveStatus)
                 .putExtra("server", connection.serverUrl)
                 .putExtra("token", connection.token)
                 .putExtra("clientId", connection.clientId)

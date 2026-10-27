@@ -15,7 +15,7 @@ a measured stutter, a crash, or an evening on the Zidoo.
 | [focus-and-scrolling.md](focus-and-scrolling.md) | D-pad focus and scroll rules, and the bugs each one fixed. |
 | [poster-pipeline.md](poster-pipeline.md) | How artwork is fetched, cached and handed to the GPU. |
 | [r8-release-builds.md](r8-release-builds.md) | The R8 launch crash and the guards that keep it from returning. |
-| [native-player.md](native-player.md) | Handing playback to Zidoo's player and reporting it to Plex. |
+| [native-player.md](native-player.md) | Handing playback to Zidoo's player (or another one) and reporting it to Plex. |
 | [plex-api.md](plex-api.md) | The Plex endpoints we use and their quirks. |
 | [design.md](design.md) | Look and feel decisions: palette, glass, top bar, motion, icon. |
 
@@ -30,7 +30,7 @@ Packages under `app/src/main/java/com/jackra1n/dooplex/`, one per feature:
 | `library` | Movies and TV Shows grids, a show's seasons and episodes, and their states. |
 | `details` | Movie details. |
 | `setup` | Sign-in, server and library pickers, the start screen. |
-| `playback` | Handing off to Zidoo's player and reporting progress to Plex. |
+| `playback` | Handing off to Zidoo's player (or another player) and reporting progress to Plex. |
 | `artwork` | Poster loading and caching, artwork painters, the background wash. |
 | `plex` | Plex clients, saved account and navigation, models. |
 | `ui` | Shared components: top bar, buttons, glass, poster card, kept screens, grid scroller; `ui/theme` holds colours and type. |
