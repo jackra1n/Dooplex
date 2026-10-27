@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
@@ -80,6 +81,12 @@ internal fun SearchScreen(
     onBack: () -> Unit,
 ) {
     val firstKey = remember { FocusRequester() }
+    val results = remember { FocusRequester() }
+    // The results take focus back while details still covers them, so focus never falls to the first tab.
+    fun closeDetails() {
+        results.requestFocus()
+        state.details.close()
+    }
     val selected = state.details.movie
     LaunchedEffect(focus.contentEpoch) {
         if (focus.contentType != "search") return@LaunchedEffect
@@ -144,7 +151,7 @@ internal fun SearchScreen(
                 val artworkWidth = artworkBucket(with(LocalDensity.current) { cardWidth.toPx() })
                 val minimal = remember { object : BringIntoViewSpec {} }
                 CompositionLocalProvider(LocalBringIntoViewSpec provides minimal) {
-                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
+                    LazyColumn(Modifier.fillMaxSize().focusRequester(results).focusRestorer(), contentPadding = PaddingValues(bottom = 48.dp)) {
                         items(state.rows, key = { it.key }) { row ->
                             Column(Modifier.padding(bottom = 20.dp)) {
                                 Text("${row.title}  ·  ${row.items.size}", color = CinemaColors.Foreground, fontSize = 18.sp,
@@ -152,7 +159,7 @@ internal fun SearchScreen(
                                 LazyRow(
                                     contentPadding = PaddingValues(end = 56.dp),
                                     horizontalArrangement = Arrangement.spacedBy(18.dp),
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().focusRestorer(),
                                 ) {
                                     items(row.items, key = { it.ratingKey }) { item ->
                                         CollectionPosterCard(
@@ -182,10 +189,10 @@ internal fun SearchScreen(
         loading = state.details.loading,
         error = state.details.error,
         enabled = enabled,
-        onDismiss = state.details::close,
+        onDismiss = ::closeDetails,
         onRetry = { state.details.open(selected) },
         onPlay = { fromBeginning ->
-            state.details.close()
+            closeDetails()
             onPlay(selected, fromBeginning)
         },
     )
