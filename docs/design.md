@@ -55,10 +55,24 @@ server has more than one of that kind, then Sort and Unwatched on the right. Tex
 when selected, the light pill when focused. There is no on-screen back button; the remote's Back
 goes back.
 
+Sort opens a glass dropdown right under its tab (which stays lit while open): a "Sort by" label and
+one row per order (Title, Date added, Release date, Rating, Date viewed, Plays), the current one
+checked with its direction on the right. Choosing it again flips the direction. There is no random
+order: big libraries load page by page, and a random order would differ on every page.
+
+## Search
+
+Search has its own keyboard (`SearchKeyboard`): a–z and 0–9 in a 6-wide grid with Space, Delete
+and Clear, on the left, with results on the right. The system keyboard never opens; on the Zidoo it
+was slow with a remote, covered the results, and popped up as soon as the field had focus. A real
+keyboard, or a remote with letter keys, still types straight into the query. The top bar stays fixed
+above Search and Watchlist, so moving up to it never leaves it pressed against the screen edge.
+
 ## Account menu and messages
 
 The account sits at the left of the top bar (Left from the Home tab): a round picture (the Plex
-account's avatar, or its initial) that grows into a pill with the account name while focused.
+account's avatar, or its initial) that grows into a light pill with the account name while focused,
+the same light as a focused tab, so it is obvious where focus is.
 Selecting it opens a small glass panel under it (`AccountMenu.kt`): **Switch server** (with the
 current server's name), a divider, then **Sign out**, which asks once more because linking again
 means scanning the sign-in code. Rows light up like the focused tab (`Glass.Light` with dark ink).
