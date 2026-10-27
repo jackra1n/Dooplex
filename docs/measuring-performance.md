@@ -47,6 +47,8 @@ Pitfalls:
 - Never upload a build while a benchmark runs; the install kills the app mid-run.
 - Start both sides of an A/B the same way (for example `--cold memory` on both); a warm baseline
   against a cold experiment measures the cache, not the change.
+- Single runs swing a lot (the same build gave 0.9% and 0.0%). To compare two builds, build both
+  APKs and install them in turn, A, B, A, B, running the same pattern after each install.
 - A shell loop over option strings needs `${=a}` in zsh, or every run gets one bad argument.
 - The bench waits for the app's next 4 s analytics upload to see each command; that is expected.
 

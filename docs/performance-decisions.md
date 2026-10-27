@@ -25,6 +25,21 @@ flag mid-session, which cleared the poster memory, so the regular-bitmap side st
 **Cost:** each poster now has a CPU copy next to its texture; see the memory entry in
 [known-issues.md](known-issues.md).
 
+## Our own Text, and no tv-material Surface
+
+**Decision (2026-10-27):** screens use `ui/Text.kt` (Compose's `BasicText` with tv-material's theme
+defaults), and the app's root is a plain background box, not tv-material's `Surface`.
+
+**Why:** updating tv-material from 1.0.0-alpha07 to 1.1.0 made the Movies grid drop frames. An A/B
+of the two APKs, installed in turn on the box, gave 0.0–0.3% dropped before and 0.7–2.1% after. In
+1.1, tv-material's `Text` renders every text into its own offscreen layer
+(`CompositingStrategy.Offscreen`), and each poster card has two. The root `Surface` also draws a
+full-screen glow pass on API 28 and newer, even with no glow. With both replaced: 0.0–0.1% dropped.
+
+**Lesson:** a library update is a performance change. Benchmark it as an A/B before keeping it
+([measuring-performance.md](measuring-performance.md)), and read the source of anything every frame
+goes through.
+
 ## Visited screens stay alive
 
 Home, Movies and TV Shows are built once and then hidden and shown, instead of being rebuilt on
