@@ -258,6 +258,8 @@ internal fun CollectionScreen(
     fun closeDetails() {
         focusedIndex = detailsIndex ?: focusedIndex
         detailsIndex = null
+        // The poster takes focus while details still covers it, so focus never falls to the first tab.
+        requesters[focusedIndex]?.requestFocus()
         state.closeDetails()
         restoreGrid()
     }

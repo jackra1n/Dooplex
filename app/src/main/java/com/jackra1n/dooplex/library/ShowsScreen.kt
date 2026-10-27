@@ -483,7 +483,7 @@ private fun EpisodeCard(
             focused = it.isFocused
             if (it.isFocused) onFocus()
         }.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
-            enabled = enabled, role = Role.Button, onClick = onClick)
+            role = Role.Button, onClick = { if (enabled) onClick() })
             .semantics { contentDescription = if (item == null) "$placeholderLabel, loading. Select to retry loading."
                 else listOf(item.title, item.subtitle, status).filter { it.isNotBlank() }.joinToString(", ") }
             .graphicsLayer { scaleX = scale.value; scaleY = scale.value },

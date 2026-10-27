@@ -45,7 +45,10 @@ import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-/** Movies, shows and seasons share the same fixed geometry and compositor-only focus treatment. */
+/**
+ * Movies, shows and seasons share the same fixed geometry and compositor-only focus treatment.
+ * A disabled card stays focusable and ignores presses: losing focus would hand it to the first tab.
+ */
 @Composable
 internal fun CollectionPosterCard(
     item: PlexBrowseItem?,
@@ -68,7 +71,7 @@ internal fun CollectionPosterCard(
             if (it.isFocused) onFocus()
         }.clickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
-            enabled = enabled, role = Role.Button, onClick = onClick,
+            role = Role.Button, onClick = { if (enabled) onClick() },
         ).semantics {
             contentDescription = if (item == null) "$placeholderLabel, loading. Select to load this item."
                 else listOfNotNull(item.title, item.subtitle.takeIf { it.isNotBlank() },
