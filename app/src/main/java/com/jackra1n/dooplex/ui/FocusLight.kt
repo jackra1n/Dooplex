@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -44,19 +43,40 @@ internal fun glowColor(atmosphere: MovieAtmosphere?): Color {
 
 private fun Color.hsv() = FloatArray(3).also { android.graphics.Color.colorToHSV(toArgb(), it) }
 
-/** A soft halo in the poster's colour around the card, drawn outside its bounds. */
-internal fun Modifier.focusGlow(focus: FocusLight, radius: Dp): Modifier = drawBehind {
-    val alpha = focus.light.value
-    if (alpha <= 0f) return@drawBehind
-    val ring = GLOW_SPREAD.toPx() / GLOW_RINGS
-    val corner = radius.toPx()
-    for (i in 0 until GLOW_RINGS) {
-        val spread = ring * (i + 0.5f)
-        val falloff = 1f - i / GLOW_RINGS.toFloat()
-        drawRoundRect(
-            focus.glow, Offset(-spread, -spread), Size(size.width + spread * 2, size.height + spread * 2),
-            CornerRadius(corner + spread), alpha = alpha * 0.34f * falloff * falloff, style = Stroke(ring),
-        )
+/**
+ * A soft halo in the poster's colour around the card, drawn outside its bounds like a CSS box shadow:
+ * a gradient strip along each side and a radial gradient at each corner, all with the same falloff,
+ * so the halo fades continuously without any blur.
+ */
+internal fun Modifier.focusGlow(focus: FocusLight, radius: Dp): Modifier = drawWithCache {
+    val spread = GLOW_SPREAD.toPx()
+    val r = radius.toPx()
+    val reach = r + spread
+    val w = size.width
+    val h = size.height
+    val color = focus.glow
+    val stops = GLOW_FALLOFF.map { (t, a) -> t to color.copy(alpha = color.alpha * a) }.toTypedArray()
+    val cornerStops = GLOW_FALLOFF.map { (t, a) -> (r + t * spread) / reach to color.copy(alpha = color.alpha * a) }.toTypedArray()
+    fun corner(x: Float, y: Float) = Brush.radialGradient(*cornerStops, center = Offset(x, y), radius = reach)
+    val corners = listOf(
+        Offset(r, r) to Offset(-spread, -spread),
+        Offset(w - r, r) to Offset(w - r, -spread),
+        Offset(r, h - r) to Offset(-spread, h - r),
+        Offset(w - r, h - r) to Offset(w - r, h - r),
+    ).map { (center, topLeft) -> corner(center.x, center.y) to topLeft }
+    val cornerSize = Size(reach, reach)
+    val top = Brush.verticalGradient(*stops, startY = 0f, endY = -spread)
+    val bottom = Brush.verticalGradient(*stops, startY = h, endY = h + spread)
+    val left = Brush.horizontalGradient(*stops, startX = 0f, endX = -spread)
+    val right = Brush.horizontalGradient(*stops, startX = w, endX = w + spread)
+    onDrawBehind {
+        val alpha = focus.light.value
+        if (alpha <= 0f) return@onDrawBehind
+        corners.forEach { (brush, topLeft) -> drawRect(brush, topLeft, cornerSize, alpha = alpha) }
+        drawRect(top, Offset(r, -spread), Size(w - r * 2, spread), alpha = alpha)
+        drawRect(bottom, Offset(r, h), Size(w - r * 2, spread), alpha = alpha)
+        drawRect(left, Offset(-spread, r), Size(spread, h - r * 2), alpha = alpha)
+        drawRect(right, Offset(w, r), Size(spread, h - r * 2), alpha = alpha)
     }
 }
 
@@ -88,5 +108,7 @@ internal fun Modifier.focusSheen(focus: FocusLight, radius: Dp): Modifier = draw
     }
 }
 
-private val GLOW_SPREAD = 18.dp
-private const val GLOW_RINGS = 6
+private val GLOW_SPREAD = 22.dp
+
+/** Distance out from the card (0 at its edge) to opacity: an eased fall to nothing, close to a blur's. */
+private val GLOW_FALLOFF = listOf(0f to 0.36f, 0.15f to 0.26f, 0.35f to 0.14f, 0.6f to 0.05f, 0.82f to 0.012f, 1f to 0f)

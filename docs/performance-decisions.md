@@ -103,12 +103,13 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 - The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`).
 - The background wash itself.
 
-## The focus glow is rings, not blur
+## The focus glow is gradients, not blur
 
-The focused card's glow is six rounded-rect strokes fading outward, tinted with the poster's most
-vivid colour from the palette the wash already extracts. Android 11 has no `RenderEffect` blur, and
-a blurred bitmap would have to be made per card size on the CPU. Only the focused card draws the
-rings. Home and the Movies grid measured 0.0% and 0.3% dropped with it.
+The focused card's glow is drawn like a CSS box shadow: a gradient strip along each side and a
+radial gradient at each corner, all with the same eased falloff, tinted with the poster's most vivid
+colour from the palette the wash already extracts. Android 11 has no `RenderEffect` blur, and a
+blurred bitmap would have to be made per card size on the CPU. An earlier version drew six fading
+rings, whose steps showed. Only the focused card draws it: eight rectangles.
 
 ## No live blur for "liquid glass"
 
