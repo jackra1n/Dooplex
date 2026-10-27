@@ -32,9 +32,9 @@ import com.jackra1n.dooplex.library.CollectionScreen
 import com.jackra1n.dooplex.library.ShowBrowseLevel
 import com.jackra1n.dooplex.library.ShowBrowseState
 import com.jackra1n.dooplex.library.ShowsScreen
-import com.jackra1n.dooplex.playback.ExternalPlayer
 import com.jackra1n.dooplex.playback.PlaybackMonitor
 import com.jackra1n.dooplex.playback.PlaybackService
+import com.jackra1n.dooplex.playback.PlayerHandoff
 import com.jackra1n.dooplex.plex.PlexAccount
 import com.jackra1n.dooplex.plex.PlexAccountClient
 import com.jackra1n.dooplex.plex.PlexAccountStore
@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         val position = try {
-            ExternalPlayer.readResult(result.data, playingDurationMs)
+            PlayerHandoff.readResult(result.data, playingDurationMs)
         } catch (exception: IllegalStateException) {
             state = state.copy(error = exception.message)
             null
@@ -639,7 +639,7 @@ class MainActivity : ComponentActivity() {
         runAction {
             val original = PlexClient(selected).loadMedia(item.ratingKey)
             val media = if (startFromBeginning) original.copy(resumePositionMs = 0) else original
-            val launch = ExternalPlayer(this).createLaunch(media)
+            val launch = PlayerHandoff.prepare(this, media)
             pendingMovie = item.ratingKey.takeIf { activeLibrary?.type == "movie" }
             pendingShow = showHistory.lastOrNull().takeIf { activeLibrary?.type == "show" }
             playingDurationMs = media.durationMs

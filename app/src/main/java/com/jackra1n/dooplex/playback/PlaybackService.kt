@@ -109,7 +109,7 @@ class PlaybackService : Service() {
             running = true,
         )
         pollJob = scope.launch {
-            val player = ExternalPlayer(this@PlaybackService)
+            val player = ZidooPlayer(this@PlaybackService)
             try {
                 while (isActive) {
                     delay(3_000)

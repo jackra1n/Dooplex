@@ -2,46 +2,21 @@ package com.jackra1n.dooplex.playback
 
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URI
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
- * The player app playback is handed to: Zidoo's own when the box has it, otherwise whichever video
- * player Android opens. Zidoo's, VLC, MX Player and Just Player all read these extras; only Zidoo's
- * reports live progress (see [readStatus]).
+ * Zidoo's own player, the one Dooplex is built for: it plays every format the box supports, and it is
+ * the only player whose progress can be read live (from the box's status service on port 9529).
  */
-class ExternalPlayer(private val context: Context) {
-    class Launch(val intent: Intent, val liveStatus: Boolean)
-
-    fun createLaunch(media: PlaybackMedia): Launch {
-        mediaUri(media.streamUrl)
-        require(media.resumePositionMs in 0..Int.MAX_VALUE.toLong()) {
-            "The video player requires a resume position between zero and 2,147,483,647 milliseconds."
-        }
-        val zidoo = ZIDOO_COMPONENTS.firstOrNull { isAvailable(it) }
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(media.streamUrl), "video/*")
-            if (zidoo != null) {
-                component = zidoo
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-            }
-            putExtra("title", media.title)
-            putExtra("from_start", media.resumePositionMs == 0L)
-            if (media.resumePositionMs > 0) {
-                putExtra("position", media.resumePositionMs.toInt())
-            }
-            putExtra("return_result", true)
-        }
-        return Launch(intent, liveStatus = zidoo != null)
-    }
+class ZidooPlayer(private val context: Context) {
+    /** The firmware's player activity, or null on a device without one. */
+    fun component(): ComponentName? = COMPONENTS.firstOrNull { isAvailable(it) }
 
     /**
      * Reads matching native playback proof, trying the firmware alias when the primary is idle
@@ -49,7 +24,7 @@ class ExternalPlayer(private val context: Context) {
      * it never proves that this item is playing. Malformed or mismatched telemetry remains an error.
      */
     suspend fun readStatus(media: PlaybackMedia): NativePlaybackStatus? = withContext(Dispatchers.IO) {
-        val expected = mediaUri(media.streamUrl)
+        val expected = originalMediaUri(media.streamUrl)
         var sawUnavailable = false
         for (endpoint in STATUS_ENDPOINTS) {
             val response = requestStatus(endpoint) ?: continue // HTTP 404: try the firmware alias.
@@ -129,49 +104,12 @@ class ExternalPlayer(private val context: Context) {
         }
     }
 
-    private fun mediaUri(url: String): URI {
-        val uri = try {
-            URI(url).normalize()
-        } catch (_: Exception) {
-            throw IllegalArgumentException("Plex did not provide a valid original-media HTTP URL.")
-        }
-        require((uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) &&
-            !uri.host.isNullOrBlank() && !uri.rawPath.isNullOrEmpty() && uri.rawFragment == null
-        ) { "Plex must provide an absolute HTTP(S) original-media URL without a fragment." }
-        return uri
-    }
-
     companion object {
         private const val MAX_STATUS_BYTES = 64 * 1024
-        private val ZIDOO_COMPONENTS = listOf(
+        private val COMPONENTS = listOf(
             ComponentName("com.zidoo.player", "com.zidoo.player.activity.PlayerActivity"),
             ComponentName("com.android.gallery3d", "com.android.gallery3d.app.MovieActivity"),
         )
         private val STATUS_ENDPOINTS = listOf("ZidooVideoPlay", "VideoPlay")
-
-        /**
-         * Where the player stopped. Zidoo's, MX Player and Just Player return `position`, VLC
-         * `extra_position`; MX Player and Just Player send no position after playing to the end.
-         */
-        @Suppress("DEPRECATION")
-        fun readResult(data: Intent?, durationMs: Long): Long? {
-            val extras = data?.extras ?: return null
-            val (finished, value) = try {
-                (extras.getString("end_by") == "playback_completion") to (extras.get("position") ?: extras.get("extra_position"))
-            } catch (_: android.os.BadParcelableException) {
-                throw IllegalStateException("The video player returned unreadable playback-result data.")
-            }
-            if (finished) return durationMs.takeIf { it > 0 }
-            val position = when (value) {
-                null -> return null
-                is Int -> value.toLong()
-                is Long -> value
-                else -> throw IllegalStateException("The video player returned an unsupported position type.")
-            }
-            if (position < 0) {
-                throw IllegalStateException("The video player returned a negative position.")
-            }
-            return position // Zero is a real position, not a missing result.
-        }
     }
 }

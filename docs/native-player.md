@@ -5,7 +5,7 @@ that is always Zidoo's own player, which keeps every codec, HDR format and audio
 box supports; that is why Dooplex exists. On other devices it falls back to whatever video player
 Android opens (decision 2026-10-27), which then has to decode the file itself.
 
-## Starting playback (`ExternalPlayer.createLaunch`)
+## Starting playback (`PlayerHandoff.prepare`, `ZidooPlayer.component`)
 
 An `ACTION_VIEW` intent with the stream URL and `video/*`. It goes explicitly to the first of these
 that exists, is enabled and is exported:
@@ -27,7 +27,7 @@ Zidoo's player, VLC, MX Player and Just Player all read these same extras (VLC r
 `Long` but falls back to an `Int`; checked in their sources, October 2026).
 
 The URL must be an absolute HTTP(S) Plex original-media URL. The activity is started for a result
-(`MainActivity.nativePlayer`), and `ExternalPlayer.readResult` takes the position from whichever
+(`MainActivity.nativePlayer`), and `PlayerHandoff.readResult` takes the position from whichever
 extra the player sends:
 
 | Player | Result extra |
@@ -45,7 +45,7 @@ progress exists only with Zidoo's player; any other player's position reaches Pl
 closes, so Plex shows no "now playing" for it. With Zidoo's player:
 
 - Every 3 s it reads `http://127.0.0.1:9529/ZidooVideoPlay/getPlayStatus`, and tries the firmware
-  alias `/VideoPlay/…` when the first answers 404 or shows nothing playing (`ExternalPlayer.readStatus`;
+  alias `/VideoPlay/…` when the first answers 404 or shows nothing playing (`ZidooPlayer.readStatus`;
   the JSON is checked by `NativeTelemetryDecoder`).
 - `status` 806 or a missing `video.path` means nothing is playing yet: keep sampling, report
   nothing. `video.status` 0 is paused and 1 is playing; `currentPosition` and `duration` are ms.
