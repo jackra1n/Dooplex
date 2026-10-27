@@ -34,7 +34,7 @@ showed "first frame after 62433 ms" (2026-10-26).
 **Status:** `tools/bench.py` presses Right before every run to wake it. Remember it when an
 automated test sees no frames.
 
-## Memory use was about 350–370 MB
+## Memory use is about 250 MB
 
 **Symptom:** analytics reported a PSS of 346–373 MB (2026-10-26), up from about 120 MB.
 
@@ -42,4 +42,4 @@ automated test sees no frames.
 a CPU copy of every poster next to its GPU texture. Screens are no longer kept (2026-10-27); the
 bitmaps stay for smooth scrolling. See [performance-decisions.md](performance-decisions.md).
 
-**Status:** measure again after the kept-screen removal. Watch it if Android starts killing Dooplex while the player runs.
+**Status:** about 250 MB after visiting every tab (2026-10-27, after the kept-screen removal). Watch it if Android starts killing Dooplex while the player runs.
