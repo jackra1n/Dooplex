@@ -66,6 +66,7 @@ class MainActivity : ComponentActivity() {
     private val nativePlayer = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
+        Analytics.event("player-result", "code" to result.resultCode)
         val position = try {
             PlayerHandoff.readResult(result.data, playingDurationMs)
         } catch (exception: IllegalStateException) {
@@ -79,6 +80,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Analytics.start(this)
         Analytics.onCommand = ::runCommand
+        // A fresh screen never receives the result of a player an earlier one opened, so that
+        // session ends here, with the last position read from the player.
+        if (savedInstanceState == null && PlaybackMonitor.state.value.running) {
+            Analytics.event("player-orphaned")
+            PlaybackService.finish(this, null)
+        }
         // The Compose surface covers the whole window, so the window's own fill is wasted GPU work.
         window.setBackgroundDrawable(null)
         store = PlexAccountStore(this)
@@ -394,7 +401,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        Analytics.event("lifecycle", "stop" to true)
+    }
+
     override fun onDestroy() {
+        Analytics.event("lifecycle", "destroy" to true, "finishing" to isFinishing, "changing" to isChangingConfigurations)
         closeBrowser()
         super.onDestroy()
     }
