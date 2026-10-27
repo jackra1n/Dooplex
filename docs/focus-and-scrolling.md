@@ -42,6 +42,21 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
 - **Focus targets that several screens share** (the tab `FocusRequester`s) attach only in the visible
   screen; see [kept-screens.md](kept-screens.md).
 
+## Back
+
+Back behaves like other TV apps (decision 2026-10-27):
+
+- **Home:** first returns focus to the hero; on the hero it leaves for the launcher with
+  `moveTaskToBack`, so the app resumes instantly instead of starting over (Android 12+ does the same
+  for root activities).
+- **Movies and TV Shows:** closes the sort dialog or the alphabet rail first, then goes to Home, the
+  same as choosing the Home tab.
+- **A show's seasons and episodes:** one level up.
+- **Sign-in and server picker:** back to Home if one is open, otherwise out to the launcher.
+
+There used to be a "Libraries" list behind Home with Servers, Back and Disconnect buttons; it was a
+leftover developer screen and is gone. Switching servers and signing out live in the account menu.
+
 ## Prefetch
 
 `rememberLazyListState(cacheWindow = LazyLayoutCacheWindow(…))` composes rows ahead in idle time:

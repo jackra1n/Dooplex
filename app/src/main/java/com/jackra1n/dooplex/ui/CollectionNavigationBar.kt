@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -161,6 +159,7 @@ internal fun Modifier.bleed(start: Dp, end: Dp) = layout { measurable, constrain
 @Composable
 internal fun CollectionNavigationBar(
     accountName: String,
+    serverName: String,
     activeType: String,
     movieTitle: String?,
     showTitle: String?,
@@ -170,6 +169,8 @@ internal fun CollectionNavigationBar(
     onMovies: () -> Unit,
     onShows: () -> Unit,
     onDown: () -> Unit,
+    onSwitchServer: () -> Unit,
+    onSignOut: () -> Unit,
 ) {
     val tabs = remember(movieTitle, showTitle) {
         buildList {
@@ -217,7 +218,7 @@ internal fun CollectionNavigationBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            AccountChip(accountName, unit, labelStyle)
+            AccountChip(accountName, serverName, unit, labelStyle, enabled, onDown, onSwitchServer, onSignOut)
         }
         if (tabs.isNotEmpty()) Row(
             Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
@@ -347,20 +348,6 @@ private fun rememberCapsule(index: Int, offsets: FloatArray, widths: FloatArray)
         capsule.alpha.animateTo(1f, CapsuleFade)
     }
     return capsule
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun AccountChip(accountName: String, unit: Dp, labelStyle: TextStyle) {
-    val initial = accountName.trim().take(1).uppercase()
-    Box(
-        Modifier.size(unit * 76).glassTrack().semantics { contentDescription = "Signed in as $accountName" },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(unit * 60).background(Glass.Plate, CircleShape), contentAlignment = Alignment.Center) {
-            Text(initial, color = Glass.Light, style = labelStyle.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-        }
-    }
 }
 
 /** A single library stays a compact label; multiple same-type sources expose an ID-keyed chooser. */

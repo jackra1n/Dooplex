@@ -5,7 +5,7 @@ import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.plex.PlexPin
 import com.jackra1n.dooplex.plex.PlexServer
 
-enum class BrowserStage { SIGN_IN, SERVERS, LIBRARIES, TITLES }
+enum class BrowserStage { SIGN_IN, SERVERS, TITLES }
 
 data class PlexBrowserState(
     val stage: BrowserStage = BrowserStage.SIGN_IN,

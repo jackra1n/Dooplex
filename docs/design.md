@@ -44,6 +44,17 @@ pages put it in their header and widen it back to the full screen with `Modifier
 grid stops short of the alphabet rail). Before this (fixed 2026-10-27) the bar jumped about 21 dp
 sideways when switching between Home and Movies.
 
+## Account menu and messages
+
+The account bubble at the left of the top bar is focusable (Left from the Home tab). Selecting it
+opens a small glass panel under it (`AccountMenu.kt`): an "ACCOUNT" label, the account and server
+names, then **Switch server** and **Sign out**. Sign out asks once more, because linking again means
+scanning the sign-in code. Rows light up like the focused tab (`Glass.Light` with dark ink).
+
+Home has no error area, so failures there (such as no video player installed) appear as a short
+message at the bottom (`MessageToast`) and clear after 6 s. Library pages show errors in their
+header instead.
+
 ## Motion
 
 | What | Motion |

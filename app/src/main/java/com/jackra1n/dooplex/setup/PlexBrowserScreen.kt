@@ -11,23 +11,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,10 +56,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.playback.PlaybackProofStatus
-import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.plex.PlexServer
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CornerColors
@@ -75,182 +71,107 @@ fun PlexBrowserScreen(
     playback: PlaybackProofStatus,
     onLink: () -> Unit,
     onServer: (PlexServer) -> Unit,
-    onLibrary: (PlexLibrary) -> Unit,
-    onServers: () -> Unit,
     onBack: () -> Unit,
-    onDisconnect: () -> Unit,
+    onSignOut: () -> Unit,
     onRetry: () -> Unit,
 ) {
     val firstAction = remember { FocusRequester() }
-    val listState = rememberLazyListState()
-    val firstItemKey = when (state.stage) {
-        BrowserStage.SIGN_IN -> "link"
-        BrowserStage.SERVERS -> state.servers.firstOrNull()?.id ?: "empty"
-        BrowserStage.LIBRARIES -> state.libraries.firstOrNull()?.key ?: "empty"
-        BrowserStage.TITLES -> "empty"
-    }
-    val destination = remember(state.stage, state.heading, firstItemKey) {
-        listOf(state.stage.name, state.heading, firstItemKey)
-    }
+    val destination = listOf(state.stage, state.servers.map { it.id }, state.error != null)
     var focusedDestination by remember { mutableStateOf<List<Any?>?>(null) }
 
-    // Network polling and playback evidence must not move focus away from the user's selection.
+    // Network polling must not move focus away from the user's selection.
     LaunchedEffect(destination, state.busy) {
         if (!state.busy && focusedDestination != destination) {
-            if (state.stage != BrowserStage.SIGN_IN) listState.scrollToItem(0)
             withFrameNanos { }
             if (firstAction.requestFocus()) focusedDestination = destination
         }
     }
 
-    BackHandler(enabled = state.canGoBack && !playback.running, onBack = onBack)
+    BackHandler(enabled = !playback.running, onBack = onBack)
 
     CornerGround(CornerColors.Welcome, Modifier.fillMaxSize())
-    Column(
-        modifier = Modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 56.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    Box(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(horizontal = 56.dp, vertical = 40.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("DOOPLEX", color = CinemaColors.Accent, fontSize = 16.sp,
-                fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-            if (state.accountName.isNotBlank()) {
-                Text(
-                    state.accountName,
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 18.sp,
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
-            if (state.stage == BrowserStage.LIBRARIES) {
-                CinemaButton(onClick = onServers, enabled = !state.busy && !playback.running) {
-                    Text("Servers", fontSize = 18.sp)
-                }
-            }
-            if (state.canGoBack) {
-                CinemaButton(onClick = onBack, enabled = !playback.running) {
-                    Text("Back", fontSize = 18.sp)
-                }
-            }
-            if (state.stage != BrowserStage.SIGN_IN) {
-                CinemaButton(onClick = onDisconnect, enabled = !playback.running) {
-                    Text("Disconnect", fontSize = 18.sp)
-                }
-            }
-        }
-        if (state.stage != BrowserStage.SIGN_IN) Text(
-            state.heading,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 12.dp),
-        )
-        if (state.stage == BrowserStage.SIGN_IN) {
-            SignInPanel(
+        Text("DOOPLEX", color = CinemaColors.Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            letterSpacing = 3.sp, modifier = Modifier.align(Alignment.TopStart))
+        when (state.stage) {
+            BrowserStage.SIGN_IN -> SignInPanel(state, firstAction, onLink, Modifier.fillMaxSize())
+            BrowserStage.SERVERS -> ServerPicker(
                 state = state,
                 firstAction = firstAction,
-                onLink = onLink,
-                modifier = Modifier.weight(1f),
+                enabled = !state.busy && !playback.running,
+                onServer = onServer,
+                onSignOut = onSignOut,
+                onRetry = onRetry,
+                modifier = Modifier.align(Alignment.Center),
             )
-        } else {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.error != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            state.error,
-                            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 18.sp,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (firstItemKey != "empty") {
-                            CinemaButton(onClick = onRetry, enabled = !state.busy && !playback.running) {
-                                Text("Retry", fontSize = 18.sp)
-                            }
-                        }
-                    }
-                }
-                if (state.busy) {
-                    Text(
-                        "Loading Plex…",
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 18.sp,
-                    )
-                }
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).widthIn(max = 820.dp).fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    when (state.stage) {
-                        BrowserStage.SERVERS -> itemsIndexed(state.servers, key = { _, server -> "server:${server.id}" }) { index, server ->
-                            BrowserChoice(
-                                title = server.name,
-                                subtitle = "Open server",
-                                action = "Open",
-                                enabled = !state.busy && !playback.running,
-                                modifier = if (index == 0) Modifier.focusRequester(firstAction) else Modifier,
-                                onClick = { onServer(server) },
-                            )
-                        }
-                        BrowserStage.LIBRARIES -> itemsIndexed(state.libraries, key = { _, library -> "library:${library.key}" }) { index, library ->
-                            BrowserChoice(
-                                title = library.title,
-                                subtitle = if (library.type == "show") "TV shows" else "Movies",
-                                action = "Browse",
-                                enabled = !state.busy && !playback.running,
-                                modifier = if (index == 0) Modifier.focusRequester(firstAction) else Modifier,
-                                onClick = { onLibrary(library) },
-                            )
-                        }
-                        BrowserStage.TITLES -> Unit
-                        BrowserStage.SIGN_IN -> Unit
-                    }
-                    if (firstItemKey == "empty" && !state.busy) {
-                        item(key = "empty") {
-                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text(
-                                    when {
-                                        state.error != null -> "Plex could not load this view. Try again or go back."
-                                        state.stage == BrowserStage.SERVERS -> "No Plex servers found. Check that your server is online and shared with this account."
-                                        state.stage == BrowserStage.LIBRARIES -> "No movie or TV libraries found on this server."
-                                        else -> "Choose a source to continue."
-                                    },
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 20.sp,
-                                )
-                                CinemaButton(
-                                    onClick = onRetry,
-                                    enabled = !playback.running,
-                                    modifier = Modifier.focusRequester(firstAction),
-                                ) { Text(if (state.error != null) "Retry" else "Refresh", fontSize = 18.sp) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if (playback.title.isNotBlank() || playback.running || playback.phase != "Ready") {
-            PlaybackEvidence(playback)
+            BrowserStage.TITLES -> Unit
         }
     }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun ServerPicker(
+    state: PlexBrowserState,
+    firstAction: FocusRequester,
+    enabled: Boolean,
+    onServer: (PlexServer) -> Unit,
+    onSignOut: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(if (state.busy && state.servers.isEmpty()) "Finding your servers…" else "Choose a server",
+            color = CinemaColors.Foreground, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            if (state.busy && state.servers.isNotEmpty()) "Connecting…" else "Signed in as ${state.accountName}",
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            color = CinemaColors.Muted, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        state.error?.let {
+            Text(it, color = CinemaColors.Error, fontSize = 16.sp, lineHeight = 23.sp, maxLines = 3,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
+        Column(
+            Modifier.padding(top = 12.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            state.servers.forEachIndexed { index, server ->
+                CinemaButton(
+                    onClick = { onServer(server) },
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(firstAction) else Modifier),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(server.name, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(reach(server), fontSize = 15.sp, maxLines = 1)
+                    }
+                    Text("›", fontSize = 26.sp)
+                }
+            }
+            if (state.servers.isEmpty() && !state.busy) {
+                Text("No Plex servers found. Check that your server is running and shared with this account.",
+                    color = CinemaColors.Muted, fontSize = 18.sp, lineHeight = 26.sp)
+            }
+        }
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (state.servers.isEmpty() || state.error != null) CinemaButton(
+                onClick = onRetry,
+                enabled = !state.busy,
+                modifier = if (state.servers.isEmpty()) Modifier.focusRequester(firstAction) else Modifier,
+            ) { Text("Try again", fontSize = 16.sp) }
+            CinemaButton(onClick = onSignOut, enabled = !state.busy) { Text("Sign out", fontSize = 16.sp) }
+        }
+    }
+}
+
+private fun reach(server: PlexServer): String = when {
+    server.connections.any { it.local } -> "On this network"
+    server.connections.any { !it.relay } -> "Over the internet"
+    else -> "Through Plex Relay"
 }
 
 /** The QR is plex.tv's own; the typed plex.tv/link code stays as a small fallback beside it. */
@@ -324,63 +245,6 @@ private fun SignInPanel(
             }
         }
     }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun BrowserChoice(
-    title: String,
-    subtitle: String,
-    action: String,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    CinemaButton(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (subtitle.isNotBlank()) {
-                Text(subtitle, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Spacer(Modifier.width(24.dp))
-        Text(action, fontSize = 18.sp)
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun PlaybackEvidence(playback: PlaybackProofStatus) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "Native playback · ${playback.phase}",
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 18.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (playback.title.isNotBlank()) {
-            Text(
-                "${playback.title} · ${playbackTime(playback.positionMs)} / ${playbackTime(playback.durationMs)}",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 18.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Text(
-            playback.detail,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 16.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-private fun playbackTime(milliseconds: Long): String {
-    val seconds = milliseconds.coerceAtLeast(0) / 1000
-    return "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
 }
 
 /** Covers start-up until the first real screen is ready, so the app never shows a page filling in. */

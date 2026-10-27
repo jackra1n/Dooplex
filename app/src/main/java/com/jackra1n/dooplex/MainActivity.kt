@@ -54,6 +54,7 @@ import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionLibraryDialog
 import com.jackra1n.dooplex.ui.CollectionNavigationBar
 import com.jackra1n.dooplex.ui.KeptScreen
+import com.jackra1n.dooplex.ui.MessageToast
 import com.jackra1n.dooplex.ui.theme.DooplexTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -141,6 +142,7 @@ class MainActivity : ComponentActivity() {
                     val navigation: @Composable () -> Unit = {
                         CollectionNavigationBar(
                             accountName = state.accountName,
+                            serverName = serverName,
                             activeType = if (home != null) "home" else library?.type.orEmpty(),
                             movieTitle = collectionLabel("movie"),
                             showTitle = collectionLabel("show"),
@@ -150,6 +152,8 @@ class MainActivity : ComponentActivity() {
                             onMovies = { selectCollection("movie") },
                             onShows = { selectCollection("show") },
                             onDown = { collectionFocus.enterHeader(route) },
+                            onSwitchServer = ::showServerPicker,
+                            onSignOut = ::signOut,
                         )
                     }
                     val shown = when {
@@ -169,7 +173,7 @@ class MainActivity : ComponentActivity() {
                                         enabled = !blocked,
                                         onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
                                         onOpen = ::openFromHome,
-                                        onBack = ::showSources,
+                                        onBack = ::leaveApp,
                                         onReady = {
                                             homeReady = true
                                             Analytics.event("ready", "what" to "home")
@@ -193,7 +197,7 @@ class MainActivity : ComponentActivity() {
                                     onLibrary = ::selectHeaderLibrary,
                                     playbackRunning = blocked,
                                     error = state.error,
-                                    onBack = ::showSources,
+                                    onBack = ::goHome,
                                     onPlay = { item, startFromBeginning -> play(item, startFromBeginning) },
                                     onOpenShow = ::openShow,
                                 )
@@ -217,6 +221,8 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    // Home has no error area of its own, so failures there (starting playback) show briefly.
+                    if (home != null) state.error?.let { MessageToast(it) { state = state.copy(error = null) } }
                     choosingLibraryType?.let { type ->
                         CollectionLibraryDialog(
                             libraries = state.libraries.filter { it.type == type },
@@ -242,10 +248,8 @@ class MainActivity : ComponentActivity() {
                         playback = playback,
                         onLink = ::linkAccount,
                         onServer = ::selectServer,
-                        onLibrary = ::selectLibrary,
-                        onServers = ::showServerPicker,
                         onBack = ::navigateBack,
-                        onDisconnect = ::disconnect,
+                        onSignOut = ::signOut,
                         onRetry = ::retry,
                     )
                 }
@@ -377,7 +381,7 @@ class MainActivity : ComponentActivity() {
         val current = account ?: return
         state = PlexBrowserState(
             stage = BrowserStage.SERVERS,
-            heading = if (restore) "Opening your collection" else "Choose your Plex server",
+            heading = "Choose a server",
             accountName = current.displayName,
             libraries = state.libraries,
             busy = true,
@@ -400,6 +404,7 @@ class MainActivity : ComponentActivity() {
 
     private fun selectServer(server: PlexServer) {
         if (PlaybackMonitor.state.value.running || state.busy) return
+        if (server.id == serverId && homeState != null) return resumeCollection()
         runAction { connectServer(server) }
     }
 
@@ -412,12 +417,7 @@ class MainActivity : ComponentActivity() {
         connection = selected
         serverId = server.id
         serverName = server.name
-        state = state.copy(
-            stage = BrowserStage.LIBRARIES,
-            heading = "Libraries · ${server.name}",
-            libraries = libraries,
-            canGoBack = true,
-        )
+        state = state.copy(libraries = libraries)
         if (navigationSelection.serverId != server.id) {
             navigationStore.rememberServer(server.id)
             navigationSelection = navigationStore.load()
@@ -564,9 +564,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showSources() {
-        if (PlaybackMonitor.state.value.running || state.busy) return
-        state = state.copy(stage = BrowserStage.LIBRARIES, heading = "Libraries · $serverName", error = null, canGoBack = true)
+    /** Back from a library returns to Home, the same as choosing the Home tab. */
+    private fun goHome() {
+        collectionFocus.enterContent("home")
+        showHome()
+    }
+
+    /** Back on Home leaves for the launcher but keeps the app ready to resume, as Android 12+ does. */
+    private fun leaveApp() {
+        moveTaskToBack(true)
     }
 
     private fun resumeCollection() {
@@ -578,15 +584,10 @@ class MainActivity : ComponentActivity() {
     private fun navigateBack() {
         if (PlaybackMonitor.state.value.running) return
         when (state.stage) {
-            BrowserStage.SIGN_IN -> finish()
+            BrowserStage.SIGN_IN -> leaveApp()
             BrowserStage.SERVERS -> {
                 if (activeLibrary != null || homeState != null) { cancelAction(); resumeCollection() }
-                else if (connection != null) { cancelAction(); state = state.copy(busy = false); showSources() }
-            }
-            BrowserStage.LIBRARIES -> {
-                cancelAction()
-                if (activeLibrary != null || homeState != null) resumeCollection()
-                else { state = state.copy(busy = false); showServerPicker() }
+                else leaveApp()
             }
             BrowserStage.TITLES -> {
                 if (!showingHome && activeLibrary?.type == "show" && showHistory.isNotEmpty()) {
@@ -595,7 +596,7 @@ class MainActivity : ComponentActivity() {
                     if (parent != null) parent.refresh()
                     else if (homeOrigin && homeState != null) openHome()
                     else selectedShowKey?.let { showLibrary?.refreshItem(it) }
-                } else showSources()
+                } else goHome()
             }
         }
     }
@@ -604,10 +605,6 @@ class MainActivity : ComponentActivity() {
         when (state.stage) {
             BrowserStage.SIGN_IN -> linkAccount()
             BrowserStage.SERVERS -> runAction { showServers() }
-            BrowserStage.LIBRARIES -> {
-                val selected = connection ?: return
-                runAction { state = state.copy(libraries = PlexClient(selected).libraries()) }
-            }
             BrowserStage.TITLES -> {
                 if (activeLibrary?.type == "movie") movieLibrary?.retry()
                 else showHistory.lastOrNull()?.retry() ?: showLibrary?.retry()
@@ -615,7 +612,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun disconnect() {
+    private fun signOut() {
         if (PlaybackMonitor.state.value.running) return
         runAction {
             closeCollections()

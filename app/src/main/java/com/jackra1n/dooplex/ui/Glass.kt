@@ -21,6 +21,7 @@ internal object Glass {
     val ControlTop = Color(0xFF2C2C30).copy(alpha = 0.78f)
     val ControlBottom = Color(0xFF1C1C1F).copy(alpha = 0.84f)
     val Plate = Color.White.copy(alpha = 0.14f)
+    val Panel = Color(0xFF1C1C1F).copy(alpha = 0.96f)
     val Light = Color(0xFFF7FAFC)
     val LightTop = Color(0xFFF6F6F6)
     val LightBottom = Color(0xFFE2E2E2)
