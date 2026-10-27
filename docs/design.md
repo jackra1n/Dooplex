@@ -91,6 +91,7 @@ header instead.
 | Buttons | Spring, damping 1, stiffness 320; focused buttons grow to 1.07× with a 10 dp shadow |
 | Poster cards | Grow to 1.035× in 160 ms; a soft top highlight and lit rim fade in over 140 ms |
 | New artwork | Fades in over 220 ms; artwork already in memory appears at once |
+| Page changes | Page dips out in 70 ms, changes while hidden, fades in over 140 ms once drawn; the top bar stays (`PageDip`) |
 
 Critically damped springs (damping 1) never overshoot, and a new key press retargets them while
 keeping their speed.

@@ -24,7 +24,7 @@ Packages under `app/src/main/java/com/jackra1n/dooplex/`, one per feature:
 
 | Package | Contents |
 | --- | --- |
-| *(root)* | `MainActivity` (navigation between screens, benchmark commands) and `DooplexApplication`. |
+| *(root)* | `MainActivity` (sign-in, server choice, start screen, playback launch, benchmark commands), `Browser` (one connected server's tabs and moving between them), `BrowserScreen` (draws the current tab) and `DooplexApplication`. |
 | `home` | The Home screen and its state. |
 | `library` | Movies and TV Shows grids, a show's seasons and episodes, and their states. |
 | `details` | Movie details, and the loader search and watchlist use to open them. |

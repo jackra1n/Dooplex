@@ -62,9 +62,19 @@ Simpler variants failed: not placing a hidden screen releases its layers, so sho
 re-records every card (33–64 ms, no better than rebuilding); alpha 0 in place lets focus search pick
 the hidden screen's cards.
 
+## Page changes dip instead of cutting
+
+**Decision (2026-10-27):** every page change runs through `PageDip`: the page fades out in 70 ms,
+the change applies while it is hidden, and the new page fades in over 140 ms after its first frame
+is drawn, so the 40–100 ms rebuild happens out of sight. Copied from plx-native's page transition.
+
+Everything on a page except the top bar wears `Modifier.pageFade()`, so the bar stays solid. It
+uses `CompositingStrategy.ModulateAlpha`, never an offscreen layer, which is expensive on this GPU.
+Anything new on a page needs it too, or it will pop while the rest fades.
+
 ## A tab switch is not a busy action
 
-`MainActivity.selectLibrary` switches immediately and saves the choice in the background. It used
+`Browser.selectLibrary` switches immediately and saves the choice in the background. It used
 to run as a `runAction`, which set `state.busy`: every screen's `enabled` flipped off and on, so
 every poster card on two screens recomposed twice per switch. A failed save only forgets the choice
 for the next start.
