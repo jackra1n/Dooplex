@@ -12,6 +12,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
@@ -173,26 +176,32 @@ class PlexAccountClient(private val clientId: String) {
         }
     }
 
+    /** Direct addresses race each other, so a dead one costs nothing; relays are the fallback. */
     suspend fun connect(server: PlexServer): PlexConnection = withContext(Dispatchers.IO) {
         require(headerValue(server.accessToken)) { "A valid Plex server token is required." }
-        for (candidate in server.connections) {
-            currentCoroutineContext().ensureActive()
-            val uri = endpoint(candidate.uri) ?: continue
-            try {
-                val identity = json { JSONObject(request("$uri/identity", token = server.accessToken, accountRequest = false)) }
-                    .getJSONObject("MediaContainer")
-                if (identity.optString("machineIdentifier") == server.id) {
-                    return@withContext PlexConnection(uri, server.accessToken, clientId)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: IOException) {
-                currentCoroutineContext().ensureActive()
-            } catch (_: JSONException) {
-                // A candidate is usable only if it identifies the selected server.
-            }
+        val (relays, direct) = server.connections.partition { it.relay }
+        firstReachable(server, direct) ?: firstReachable(server, relays)
+            ?: throw IOException("No declared connection could reach this Plex server. Check that it is online and reachable.")
+    }
+
+    private suspend fun firstReachable(server: PlexServer, candidates: List<PlexServerEndpoint>): PlexConnection? =
+        channelFlow {
+            candidates.forEach { candidate -> launch { probe(server, candidate)?.let { send(it) } } }
+        }.firstOrNull()
+
+    private suspend fun probe(server: PlexServer, candidate: PlexServerEndpoint): PlexConnection? {
+        val uri = endpoint(candidate.uri) ?: return null
+        return try {
+            val identity = json { JSONObject(request("$uri/identity", token = server.accessToken, accountRequest = false)) }
+                .getJSONObject("MediaContainer")
+            PlexConnection(uri, server.accessToken, clientId).takeIf { identity.optString("machineIdentifier") == server.id }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: IOException) {
+            null
+        } catch (_: JSONException) {
+            null
         }
-        throw IOException("No declared connection could reach this Plex server. Check that it is online and reachable.")
     }
 
     private suspend fun request(
