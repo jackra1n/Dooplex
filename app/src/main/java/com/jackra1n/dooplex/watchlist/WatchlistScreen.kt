@@ -28,7 +28,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.artwork.artworkBucket
 import com.jackra1n.dooplex.details.MovieDetailsScreen
@@ -36,6 +35,7 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
+import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** The watchlist as a poster grid under the top bar; titles this server lacks are only counted. */

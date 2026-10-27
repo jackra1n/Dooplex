@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** A small glass panel dropped below its anchor; it holds focus until Back or a choice closes it. */

@@ -23,7 +23,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** A quiet header control: plain text at rest, a plate when selected, the light pill when focused or [lit]. */

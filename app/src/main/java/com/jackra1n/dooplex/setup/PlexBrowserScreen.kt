@@ -55,12 +55,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.playback.PlaybackProofStatus
 import com.jackra1n.dooplex.plex.PlexServer
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CornerColors
 import com.jackra1n.dooplex.ui.CornerGround
+import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 @Composable

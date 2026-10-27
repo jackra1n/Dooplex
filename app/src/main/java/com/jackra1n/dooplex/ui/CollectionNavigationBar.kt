@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalTextStyle
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.diagnostics.Analytics
 import kotlinx.coroutines.launch
 

@@ -85,7 +85,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.MovieBackdrop
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.artwork.artworkBucket
@@ -100,6 +99,7 @@ import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.GlassMenu
 import com.jackra1n.dooplex.ui.MenuLabel
 import com.jackra1n.dooplex.ui.MenuRow
+import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.TextTab
 import com.jackra1n.dooplex.ui.WhenVisible
 import com.jackra1n.dooplex.ui.bleed
