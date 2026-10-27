@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -72,6 +71,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -82,10 +82,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.MovieBackdrop
@@ -99,10 +98,12 @@ import com.jackra1n.dooplex.plex.PlexLibrary
 import com.jackra1n.dooplex.ui.CinemaButton
 import com.jackra1n.dooplex.ui.CollectionFocusState
 import com.jackra1n.dooplex.ui.CollectionPosterCard
+import com.jackra1n.dooplex.ui.GlassMenu
+import com.jackra1n.dooplex.ui.MenuLabel
+import com.jackra1n.dooplex.ui.MenuRow
 import com.jackra1n.dooplex.ui.TextTab
 import com.jackra1n.dooplex.ui.WhenVisible
 import com.jackra1n.dooplex.ui.bleed
-import com.jackra1n.dooplex.ui.glassRim
 import com.jackra1n.dooplex.ui.rememberGridRowScroller
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlin.math.abs
@@ -245,6 +246,13 @@ internal fun CollectionScreen(
         restoreToHeader = false
         restoreEpoch++
         if (index / scroller.columns != from / scroller.columns) scroller.showCard(index)
+    }
+
+    fun closeSort() {
+        sortOpen = false
+        restoreToHeader = true
+        needsFocus = true
+        restoreEpoch++
     }
 
     fun closeDetails() {
@@ -392,12 +400,7 @@ internal fun CollectionScreen(
 
         BackHandler(enabled = interactive && selected == null) {
             when {
-                sortOpen -> {
-                    sortOpen = false
-                    restoreToHeader = true
-                    needsFocus = true
-                    restoreEpoch++
-                }
+                sortOpen -> closeSort()
                 railHasFocus -> leaveAlphabet()
                 else -> onBack()
             }
@@ -545,7 +548,13 @@ internal fun CollectionScreen(
                             compact = compact,
                             enabled = controlsEnabled,
                             sortFocus = sortFocus,
+                            sortOpen = sortOpen,
                             onSort = { restoreGrid(); sortOpen = true },
+                            onSortClose = ::closeSort,
+                            onSortChoose = {
+                                state.setSort(it)
+                                closeSort()
+                            },
                             onToggleUnwatched = { restoreGrid(); state.setUnwatchedOnly(!state.unwatchedOnly) },
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) {
@@ -702,24 +711,6 @@ internal fun CollectionScreen(
         }
     }
 
-    if (sortOpen) {
-        CollectionSortDialog(
-            current = state.sort,
-            onDismiss = {
-                sortOpen = false
-                restoreToHeader = true
-                needsFocus = true
-                restoreEpoch++
-            },
-            onChoose = {
-                state.setSort(it)
-                sortOpen = false
-                restoreToHeader = true
-                needsFocus = true
-                restoreEpoch++
-            },
-        )
-    }
     if (selected != null) {
         MovieDetailsScreen(
             movie = selected,
@@ -749,7 +740,10 @@ private fun CollectionHeader(
     compact: Boolean,
     enabled: Boolean,
     sortFocus: FocusRequester,
+    sortOpen: Boolean,
     onSort: () -> Unit,
+    onSortClose: () -> Unit,
+    onSortChoose: (CollectionSort) -> Unit,
     onToggleUnwatched: () -> Unit,
     modifier: Modifier,
 ) {
@@ -779,8 +773,13 @@ private fun CollectionHeader(
         compact = compact,
         modifier = modifier,
         actions = {
-            TextTab(label = "Sort · ${state.sort.title}  ⌄", enabled = enabled,
-                modifier = Modifier.focusRequester(sortFocus), onClick = onSort)
+            var tabHeight by remember { mutableIntStateOf(0) }
+            Box {
+                TextTab(label = "Sort · ${state.sort.label}  ⌄", lit = sortOpen, enabled = enabled,
+                    modifier = Modifier.focusRequester(sortFocus).onSizeChanged { tabHeight = it.height }, onClick = onSort)
+                if (sortOpen) SortMenu(state.sort, tabHeight + with(LocalDensity.current) { 10.dp.roundToPx() },
+                    onSortClose, onSortChoose)
+            }
             TextTab(label = "Unwatched", selected = state.unwatchedOnly, enabled = enabled, onClick = onToggleUnwatched)
         },
     ) {
@@ -1009,36 +1008,27 @@ private fun ErrorNote(message: String, modifier: Modifier = Modifier) {
         maxLines = 3, overflow = TextOverflow.Ellipsis)
 }
 
+/** Drops below the Sort tab: one row per kind of order; choosing the current one flips its direction. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun CollectionSortDialog(current: CollectionSort, onDismiss: () -> Unit, onChoose: (CollectionSort) -> Unit) {
+private fun SortMenu(current: CollectionSort, below: Int, onDismiss: () -> Unit, onChoose: (CollectionSort) -> Unit) {
     val initial = remember { FocusRequester() }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.TopEnd) {
-            Column(
-                Modifier.padding(top = 70.dp).widthIn(max = 340.dp).fillMaxWidth()
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(Brush.verticalGradient(listOf(CinemaColors.Panel.copy(alpha = 0.98f), CinemaColors.Canvas.copy(alpha = 0.98f))))
-                    .glassRim(30.dp)
-                    .padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("SORT YOUR LIBRARY", color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-                CollectionSort.entries.forEach { sort ->
-                    CinemaButton(onClick = { onChoose(sort) }, selected = current == sort,
-                        modifier = Modifier.fillMaxWidth().then(if (current == sort) Modifier.focusRequester(initial) else Modifier)) {
-                        ControlText(sort.title)
-                        Spacer(Modifier.weight(1f))
-                        if (current == sort) Text("Selected", fontSize = 12.sp)
-                    }
-                }
-                CinemaButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { ControlText("Cancel") }
-            }
-        }
-        LaunchedEffect(Unit) {
-            withFrameNanos { }
-            initial.requestFocus()
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        initial.requestFocus()
+    }
+    GlassMenu(Alignment.TopEnd, IntOffset(0, below), 340.dp, onDismiss) {
+        MenuLabel("Sort by")
+        CollectionSort.entries.distinctBy { it.label }.forEach { sort ->
+            val chosen = sort.label == current.label
+            MenuRow(
+                label = sort.label,
+                modifier = if (chosen) Modifier.focusRequester(initial) else Modifier,
+                trailing = if (chosen) current.direction else "",
+                checkable = true,
+                checked = chosen,
+                onClick = { onChoose(if (chosen) current.flipped else sort) },
+            )
         }
     }
 }

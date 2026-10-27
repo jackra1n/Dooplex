@@ -59,11 +59,26 @@ data class CollectionLetter(val key: String, val title: String, val start: Int, 
 /** A new id represents every activation, including repeated jumps to the same index. */
 data class CollectionJump(val id: Long, val index: Int)
 
-enum class CollectionSort(val title: String, val plexValue: String) {
-    TITLE("Title A–Z", "titleSort:asc"),
-    ADDED("Recently added", "addedAt:desc"),
-    RELEASE("Release date", "originallyAvailableAt:desc"),
-    RATING("Rating", "rating:desc"),
+/**
+ * Each [label] is one row of the sort menu, listed in its default direction first; choosing the
+ * current row again flips to its partner. No random order: pages are loaded separately, and a
+ * random sort would differ on every page.
+ */
+enum class CollectionSort(val label: String, val direction: String, val plexValue: String) {
+    TITLE("Title", "A–Z", "titleSort:asc"),
+    TITLE_DESC("Title", "Z–A", "titleSort:desc"),
+    ADDED("Date added", "Newest", "addedAt:desc"),
+    ADDED_ASC("Date added", "Oldest", "addedAt:asc"),
+    RELEASE("Release date", "Newest", "originallyAvailableAt:desc"),
+    RELEASE_ASC("Release date", "Oldest", "originallyAvailableAt:asc"),
+    RATING("Rating", "Highest", "rating:desc"),
+    RATING_ASC("Rating", "Lowest", "rating:asc"),
+    VIEWED("Date viewed", "Latest", "lastViewedAt:desc"),
+    VIEWED_ASC("Date viewed", "Earliest", "lastViewedAt:asc"),
+    PLAYS("Plays", "Most", "viewCount:desc"),
+    PLAYS_ASC("Plays", "Fewest", "viewCount:asc");
+
+    val flipped: CollectionSort get() = entries.first { it.label == label && it != this }
 }
 
 class PlexAuthenticationException(message: String) : IOException(message)

@@ -27,26 +27,28 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-/** A quiet header control: plain text at rest, a plate when selected, the light pill when focused. */
+/** A quiet header control: plain text at rest, a plate when selected, the light pill when focused or [lit]. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun TextTab(
     label: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    lit: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val light = focused || lit
     val ink = when {
-        focused -> Glass.Ink
+        light -> Glass.Ink
         selected -> CinemaColors.Foreground
         else -> Glass.IdleInk
     }
     Box(
         modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }
             .clip(RoundedCornerShape(50))
-            .background(if (focused) Glass.Light else if (selected) Glass.Plate else Color.Transparent)
+            .background(if (light) Glass.Light else if (selected) Glass.Plate else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
@@ -56,7 +58,7 @@ internal fun TextTab(
             .padding(horizontal = 20.dp, vertical = 10.dp),
     ) {
         Text(label, color = ink, fontSize = 17.sp,
-            fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium,
+            fontWeight = if (selected || light) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
