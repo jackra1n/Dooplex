@@ -36,6 +36,12 @@ of the two APKs, installed in turn on the box, gave 0.0–0.3% dropped before an
 (`CompositingStrategy.Offscreen`), and each poster card has two. The root `Surface` also draws a
 full-screen glow pass on API 28 and newer, even with no glow. With both replaced: 0.0–0.1% dropped.
 
+**Compose 1.12 (BOM 2026.09.00, same day):** an A/B against Compose 1.10.4 showed no visible
+difference: the same dropped frames on Home, the Movies grid and tab switches, about 13% fewer
+frames drawn for the same Home test, and a heavier (but hidden) rebuild behind the start screen. Its
+source still releases layers of unplaced nodes, skips them in focus search, runs `onEnter` for
+focus requests and defaults TV scrolling to the 30% pivot, so every workaround here still applies.
+
 **Lesson:** a library update is a performance change. Benchmark it as an A/B before keeping it
 ([measuring-performance.md](measuring-performance.md)), and read the source of anything every frame
 goes through.
