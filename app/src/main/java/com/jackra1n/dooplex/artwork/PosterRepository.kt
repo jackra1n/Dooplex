@@ -417,10 +417,11 @@ private class PosterDiskCache(private val root: File) {
         try {
             if (!root.isDirectory && !root.mkdirs()) return false
             val files = root.listFiles() ?: return false
-            files.filter { it.isFile }.sortedBy { it.lastModified() }.forEach { file ->
+            files.filter { it.isFile }.map { it to it.lastModified() }.sortedBy { it.second }.forEach { (file, _) ->
                 if (file.name.endsWith(".tmp")) file.delete() else {
-                    entries[file.name] = file.length()
-                    bytes += file.length()
+                    val length = file.length()
+                    entries[file.name] = length
+                    bytes += length
                 }
             }
             available = true
