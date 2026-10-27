@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.lifecycleScope
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -67,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var navigationStore: PlexNavigationStore
     private lateinit var accountClient: PlexAccountClient
     private var account: PlexAccount? = null
+    private var accountAvatar by mutableStateOf<ImageBitmap?>(null)
     private var connection: PlexConnection? = null
     private var movieLibrary by mutableStateOf<CollectionLibraryState?>(null)
     private var showLibrary by mutableStateOf<CollectionLibraryState?>(null)
@@ -140,6 +143,7 @@ class MainActivity : ComponentActivity() {
                     val navigation: @Composable () -> Unit = {
                         CollectionNavigationBar(
                             accountName = state.accountName,
+                            accountAvatar = accountAvatar,
                             serverName = serverName,
                             activeType = if (home != null) "home" else library?.type.orEmpty(),
                             movieTitle = collectionLabel("movie"),
@@ -268,6 +272,7 @@ class MainActivity : ComponentActivity() {
                 linkAccount()
             } else {
                 account = saved
+                refreshAccount(saved)
                 navigationSelection = navigationStore.load()
                 showServers(restore = true)
             }
@@ -283,6 +288,37 @@ class MainActivity : ComponentActivity() {
         // Keys would move focus on the page hidden under the start screen.
         if (splash) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    /** Keeps the saved name and picture current; an account saved before pictures existed gets one. */
+    private fun refreshAccount(saved: PlexAccount) {
+        lifecycleScope.launch {
+            val current = try {
+                accountClient.account(saved.token).also { if (it != saved) store.save(it) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                saved
+            }
+            if (account?.token != current.token) return@launch
+            account = current
+            if (state.accountName.isNotEmpty()) state = state.copy(accountName = current.displayName)
+            showAvatar(current)
+        }
+    }
+
+    private fun showAvatar(current: PlexAccount) {
+        val url = current.avatarUrl ?: return
+        lifecycleScope.launch {
+            val picture = try {
+                accountClient.avatar(url, AVATAR_PX).asImageBitmap()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (account?.token == current.token) accountAvatar = picture
+        }
     }
 
     /** Commands from tools/bench.py, so every benchmark run starts from the same state. */
@@ -349,6 +385,7 @@ class MainActivity : ComponentActivity() {
                     navigationStore.clear()
                     navigationSelection = PlexNavigationSelection()
                     account = linked
+                    showAvatar(linked)
                     splash = true
                     state = state.copy(busy = true, pin = null, pinQr = null)
                     showServers(restore = true)
@@ -604,6 +641,7 @@ class MainActivity : ComponentActivity() {
             posterRepository?.close()
             posterRepository = null
             account = null
+            accountAvatar = null
             connection = null
             serverId = null
             serverName = ""
@@ -687,6 +725,7 @@ class MainActivity : ComponentActivity() {
                 throw cancelled
             } catch (expired: PlexAuthenticationException) {
                 account = null
+                accountAvatar = null
                 closeCollections()
                 posterRepository?.close()
                 posterRepository = null
@@ -715,5 +754,6 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val PIN_GENERATIONS = 4
         const val SPLASH_LIMIT_MS = 6_000L
+        const val AVATAR_PX = 128
     }
 }

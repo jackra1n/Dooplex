@@ -34,7 +34,8 @@ class PlexAccountStore(context: Context) {
             )
             val decrypted = cipher.doFinal(Base64.decode(parts[1], Base64.NO_WRAP))
             val account = JSONObject(String(decrypted, Charsets.UTF_8))
-            PlexAccount(account.getString("token"), account.getString("displayName"))
+            PlexAccount(account.getString("token"), account.getString("displayName"),
+                account.optString("avatarUrl").takeIf { it.isNotBlank() })
         } catch (_: Exception) {
             throw IllegalStateException("Saved Plex sign-in could not be read. Disconnect and link your account again.")
         }
@@ -47,6 +48,7 @@ class PlexAccountStore(context: Context) {
             val plaintext = JSONObject()
                 .put("token", account.token)
                 .put("displayName", account.displayName)
+                .put("avatarUrl", account.avatarUrl ?: "")
                 .toString().toByteArray(Charsets.UTF_8)
             val encrypted = cipher.doFinal(plaintext)
             val stored = Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +

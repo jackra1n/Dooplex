@@ -2,6 +2,7 @@ package com.jackra1n.dooplex.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,8 +32,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -58,6 +62,7 @@ import com.jackra1n.dooplex.ui.theme.CinemaColors
 @Composable
 internal fun AccountChip(
     accountName: String,
+    avatar: ImageBitmap?,
     serverName: String,
     unit: Dp,
     labelStyle: TextStyle,
@@ -86,7 +91,12 @@ internal fun AccountChip(
                 .semantics { contentDescription = "Account, $accountName" },
             contentAlignment = Alignment.Center,
         ) {
-            Box(
+            if (avatar != null) {
+                // The picture fills the bubble; focus shows as a light ring around it.
+                Box(Modifier.size(unit * 76).drawBehind { if (light > 0f) drawCircle(Glass.Light, alpha = light) })
+                Image(avatar, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(unit * 60).clip(CircleShape))
+            } else Box(
                 Modifier.size(unit * 60).drawBehind {
                     drawCircle(Glass.Plate)
                     if (light > 0f) drawCircle(Glass.Light, alpha = light)
@@ -101,6 +111,7 @@ internal fun AccountChip(
             val below = with(LocalDensity.current) { (unit * 90).roundToPx() }
             AccountMenu(
                 accountName = accountName,
+                avatar = avatar,
                 serverName = serverName,
                 offset = IntOffset(0, below),
                 onDismiss = { open = false },
@@ -116,6 +127,7 @@ internal fun AccountChip(
 @Composable
 private fun AccountMenu(
     accountName: String,
+    avatar: ImageBitmap?,
     serverName: String,
     offset: IntOffset,
     onDismiss: () -> Unit,
@@ -139,12 +151,21 @@ private fun AccountMenu(
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
-                Text("ACCOUNT", color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp)
-                Text(accountName, color = CinemaColors.Foreground, fontSize = 18.sp, fontWeight = FontWeight.Medium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-                if (serverName.isNotBlank()) Text(serverName, color = CinemaColors.Muted, fontSize = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("ACCOUNT", color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+            Row(
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (avatar != null) Image(avatar, contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(44.dp).clip(CircleShape))
+                Column {
+                    Text(accountName, color = CinemaColors.Foreground, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (serverName.isNotBlank()) Text(serverName, color = CinemaColors.Muted, fontSize = 15.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             if (confirming) {
                 Text("Sign out of Plex? You'll need to scan the sign-in code again.",

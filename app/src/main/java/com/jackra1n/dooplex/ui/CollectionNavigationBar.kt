@@ -42,6 +42,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -161,6 +162,7 @@ internal fun Modifier.bleed(start: Dp, end: Dp) = layout { measurable, constrain
 @Composable
 internal fun CollectionNavigationBar(
     accountName: String,
+    accountAvatar: ImageBitmap?,
     serverName: String,
     activeType: String,
     movieTitle: String?,
@@ -227,7 +229,7 @@ internal fun CollectionNavigationBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            AccountChip(accountName, serverName, unit, labelStyle, enabled, onDown, onSwitchServer, onSignOut)
+            AccountChip(accountName, accountAvatar, serverName, unit, labelStyle, enabled, onDown, onSwitchServer, onSignOut)
         }
         if (tabs.isNotEmpty()) Row(
             Modifier.graphicsLayer { alpha = if (enabled) 1f else 0.45f }

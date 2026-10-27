@@ -47,6 +47,39 @@ class PlexAccountClient(private val clientId: String) {
         BitmapFactory.decodeByteArray(image, 0, image.size) ?: throw IOException("Plex returned an unreadable QR code.")
     }
 
+    /**
+     * The account's picture. plex.tv answers with a redirect to wherever the image lives, so this
+     * follows redirects, and sends neither the token nor Plex headers to those hosts.
+     */
+    suspend fun avatar(url: String, size: Int): Bitmap = withContext(Dispatchers.IO) {
+        require(plexHosted(url)) { "A plex.tv avatar address is required." }
+        val http = URI(url).toURL().openConnection() as HttpURLConnection
+        try {
+            http.connectTimeout = 8_000
+            http.readTimeout = 8_000
+            http.setRequestProperty("Accept", "image/*")
+            if (http.responseCode !in 200..299 || !http.url.protocol.equals("https", true)) {
+                throw IOException("Plex did not return an account picture.")
+            }
+            val bytes = http.inputStream.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8_192)
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (output.size() + count > 2 * 1024 * 1024) throw IOException("The account picture is too large.")
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IOException("The account picture is unreadable.")
+            Bitmap.createScaledBitmap(decoded, size, size, true)
+        } finally {
+            http.disconnect()
+        }
+    }
+
     suspend fun pollPin(pin: PlexPin): String? = withContext(Dispatchers.IO) {
         if (System.currentTimeMillis() >= pin.expiresAtMs) throw IOException("The Plex link code expired. Request a new code.")
         require(Regex("[0-9]+").matches(pin.id) && Regex("[A-Za-z0-9]+").matches(pin.code)) {
@@ -64,7 +97,7 @@ class PlexAccountClient(private val clientId: String) {
             val value = JSONObject(request("https://plex.tv/api/v2/user", token = token))
             val name = sequenceOf("friendlyName", "username", "title").map { value.optString(it) }
                 .firstOrNull { it.isNotBlank() && it != "null" } ?: "Plex account"
-            PlexAccount(token, name)
+            PlexAccount(token, name, value.optString("thumb").takeIf(::plexHosted))
         }
     }
 

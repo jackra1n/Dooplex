@@ -3,7 +3,7 @@ package com.jackra1n.dooplex.plex
 import java.io.IOException
 
 data class PlexPin(val id: String, val code: String, val expiresAtMs: Long, val qrUrl: String)
-data class PlexAccount(val token: String, val displayName: String)
+data class PlexAccount(val token: String, val displayName: String, val avatarUrl: String? = null)
 data class PlexServerEndpoint(val uri: String, val local: Boolean, val relay: Boolean)
 data class PlexServer(
     val id: String,
