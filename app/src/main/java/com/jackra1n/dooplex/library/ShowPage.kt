@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -278,7 +279,7 @@ private fun Episodes(
             modifier = Modifier.fillMaxWidth().focusRequester(focus).focusRestorer(start).focusProperties { this.up = up },
         ) {
             items(count, key = { it }) { index ->
-                val item = episodes.itemAt(index)
+                val item = remember(index) { derivedStateOf { episodes.itemAt(index) } }.value
                 EpisodeCard(
                     item = item,
                     posters = posters,

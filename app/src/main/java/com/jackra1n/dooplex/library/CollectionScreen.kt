@@ -606,7 +606,8 @@ internal fun CollectionScreen(
                             key = { index -> (state.generation.toLong() shl 32) or index.toLong() },
                             contentType = { "collection-poster" },
                         ) { index ->
-                            val item = if (state.total > 0) state.itemAt(index) else null
+                            // Page loads touch the whole page map; a card recomposes only when its own title changes.
+                            val item = remember(state.generation, index) { derivedStateOf { if (state.total > 0) state.itemAt(index) else null } }.value
                             val requester = remember(state.generation, index) { FocusRequester() }
                             val inArtworkRange by remember(state.generation, index) { derivedStateOf { index in artworkRange } }
                             DisposableEffect(requester) {
