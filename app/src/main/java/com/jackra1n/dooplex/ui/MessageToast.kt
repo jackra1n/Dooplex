@@ -16,13 +16,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import kotlinx.coroutines.delay
 
 /** A short message over a page that has no place of its own for errors; it clears itself. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun MessageToast(message: String, onDone: () -> Unit) {
     LaunchedEffect(message) {

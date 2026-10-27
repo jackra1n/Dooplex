@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
@@ -55,7 +54,6 @@ internal fun GlassMenu(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun MenuLabel(text: String) {
     Text(text.uppercase(), color = CinemaColors.Muted, fontSize = 13.sp, letterSpacing = 1.5.sp,
@@ -71,7 +69,6 @@ internal fun MenuDivider() {
  * A menu choice: plain text at rest, the light pill when focused. [checked] rows show a check in a
  * column every row of a [checkable] menu keeps, so labels stay aligned; [trailing] is right-aligned.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun MenuRow(
     label: String,

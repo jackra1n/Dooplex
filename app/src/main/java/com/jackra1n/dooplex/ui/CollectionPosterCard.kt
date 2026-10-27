@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.PosterArtwork
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -48,7 +47,6 @@ import com.jackra1n.dooplex.plex.PlexBrowseItem
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** Movies, shows and seasons share the same fixed geometry and compositor-only focus treatment. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CollectionPosterCard(
     item: PlexBrowseItem?,

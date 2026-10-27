@@ -68,7 +68,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.MovieBackdrop
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -99,7 +98,7 @@ private val ShelfSpring = spring<Float>(dampingRatio = 1f, stiffness = 170f)
  * shelves. Focus in the shelves rests the focused row on one line under the bar, reached on the
  * same soft spring the library grid uses; each shelf returns to the card it last left.
  */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun HomeScreen(
     state: HomeState,
@@ -369,7 +368,6 @@ private fun HeroArt(item: PlexBrowseItem?, posters: PosterRepository, modifier: 
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun HeroDetails(
     item: PlexBrowseItem,
@@ -448,7 +446,6 @@ private fun HeroDetails(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun HomeStatus(state: HomeState, enabled: Boolean, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {

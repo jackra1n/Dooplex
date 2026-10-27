@@ -55,7 +55,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.playback.PlaybackProofStatus
 import com.jackra1n.dooplex.plex.PlexServer
@@ -64,7 +63,6 @@ import com.jackra1n.dooplex.ui.CornerColors
 import com.jackra1n.dooplex.ui.CornerGround
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun PlexBrowserScreen(
     state: PlexBrowserState,
@@ -112,7 +110,6 @@ fun PlexBrowserScreen(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ServerPicker(
     state: PlexBrowserState,
@@ -175,7 +172,6 @@ private fun reach(server: PlexServer): String = when {
 }
 
 /** The QR is plex.tv's own; the typed plex.tv/link code stays as a small fallback beside it. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun SignInPanel(
     state: PlexBrowserState,
@@ -248,7 +244,6 @@ private fun SignInPanel(
 }
 
 /** Covers start-up until the first real screen is ready, so the app never shows a page filling in. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun StartScreen(modifier: Modifier) {
     val sweep = rememberInfiniteTransition(label = "start").animateFloat(

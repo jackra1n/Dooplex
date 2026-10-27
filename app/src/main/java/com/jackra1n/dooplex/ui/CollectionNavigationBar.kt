@@ -57,7 +57,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.Text
@@ -152,7 +151,6 @@ internal fun Modifier.bleed(start: Dp, end: Dp) = layout { measurable, constrain
  * D-pad movement only moves focus; Center/click confirms a route, and Down enters its header.
  * Sizes are laid out for a 1920-wide screen and scaled to this one; capsules animate draw-only.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CollectionNavigationBar(
     accountName: String,

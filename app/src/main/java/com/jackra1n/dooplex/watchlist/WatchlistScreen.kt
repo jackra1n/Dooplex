@@ -28,7 +28,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.artwork.artworkBucket
@@ -40,7 +39,7 @@ import com.jackra1n.dooplex.ui.CollectionPosterCard
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /** The watchlist as a poster grid under the top bar; titles this server lacks are only counted. */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun WatchlistScreen(
     state: WatchlistState,

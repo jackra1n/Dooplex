@@ -61,7 +61,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.R
@@ -84,7 +83,6 @@ import kotlinx.coroutines.launch
  * Metadata refresh never resets focus; removing Retry/Start over returns focus to playback.
  * Playback delegates unchanged to the owner's close-before-play callback; artwork is cached.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun MovieDetailsScreen(
     movie: PlexBrowseItem,
@@ -490,7 +488,6 @@ private fun MovieDetailsBackdrop(path: String?, posters: PosterRepository, activ
 }
 
 /** Title art is fitted, never cropped; the real title remains readable until artwork is available. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailTitle(
     movie: PlexBrowseItem,
@@ -519,7 +516,6 @@ private fun DetailTitle(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailHeroCredits(movie: PlexBrowseItem, compact: Boolean, modifier: Modifier) {
     Column(
@@ -536,7 +532,6 @@ private fun DetailHeroCredits(movie: PlexBrowseItem, compact: Boolean, modifier:
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailHeroCredit(label: String, names: String, compact: Boolean) {
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -554,7 +549,6 @@ private fun DetailHeroCredit(label: String, names: String, compact: Boolean) {
 }
 
 /** Provider marks identify the source without repeating long labels in the hero. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailRatingBadge(rating: PlexMediaRating, compact: Boolean) {
     val imdb = rating.source == "IMDb"
@@ -594,7 +588,6 @@ internal fun DetailPlayIcon(compact: Boolean) {
 }
 
 /** A quiet text action with a stable, high-contrast D-pad underline rather than another pill. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailReadingLink(
     text: String,
@@ -629,7 +622,6 @@ private fun DetailReadingLink(
     )
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailSection(label: String, text: String, compact: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp)) {
@@ -642,7 +634,6 @@ private fun DetailSection(label: String, text: String, compact: Boolean) {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun DetailActionText(text: String, compact: Boolean) {
     Text(text, fontSize = if (compact) 13.sp else 16.sp, fontWeight = FontWeight.Medium)

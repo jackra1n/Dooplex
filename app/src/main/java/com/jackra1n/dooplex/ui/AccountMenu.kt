@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
@@ -56,7 +55,6 @@ import com.jackra1n.dooplex.ui.theme.CinemaColors
  * The account at the left of the top bar: a round picture at rest that grows into a pill with the
  * account name while focused or open. Selecting it opens the account menu below it.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun AccountChip(
     accountName: String,
@@ -113,7 +111,6 @@ internal fun AccountChip(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun AccountPicture(accountName: String, avatar: ImageBitmap?, size: Dp, labelStyle: TextStyle) {
     if (avatar != null) {
@@ -128,7 +125,6 @@ private fun AccountPicture(accountName: String, avatar: ImageBitmap?, size: Dp, 
 }
 
 /** Signing out asks once more, because linking again means scanning the sign-in code. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun AccountMenu(
     serverName: String,

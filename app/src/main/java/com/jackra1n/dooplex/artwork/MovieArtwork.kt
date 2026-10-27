@@ -28,7 +28,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.ui.theme.CinemaColors
@@ -74,7 +73,6 @@ internal fun rememberMovieArtworkPainter(
     return remember(bitmap) { bitmap?.let { BitmapPainter(it.asImageBitmap()) } }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun PosterArtwork(
     path: String?,

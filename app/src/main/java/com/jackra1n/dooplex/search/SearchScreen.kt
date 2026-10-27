@@ -50,7 +50,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.PosterRepository
 import com.jackra1n.dooplex.artwork.artworkBucket
@@ -66,7 +65,7 @@ import com.jackra1n.dooplex.ui.theme.CinemaColors
  * system keyboard never opens: on a TV it covers the results and is slow with a remote. A real
  * keyboard (or a remote with letter keys) still types straight into the query.
  */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SearchScreen(
     state: SearchState,
@@ -191,7 +190,6 @@ internal fun SearchScreen(
     )
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun QueryLine(query: String) {
     Column {
@@ -233,7 +231,6 @@ private fun SearchKeyboard(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun Key(label: String, width: Dp, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }

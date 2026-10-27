@@ -85,7 +85,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.MovieBackdrop
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -157,7 +156,7 @@ private suspend fun LazyGridState.scrollToCollectionLetter(index: Int) {
  * Its prior content viewport is retained separately while the complete header is revealed.
  * Visible artwork loads while scrolling; idle lookahead warms the rows ahead without competing with it.
  */
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun CollectionScreen(
     state: CollectionLibraryState,
@@ -728,7 +727,6 @@ internal fun CollectionScreen(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun CollectionHeader(
     state: CollectionLibraryState,
@@ -795,7 +793,6 @@ private fun CollectionHeader(
 }
 
 /** Scrolling chrome shares library selection, counts and control positions without a giant type title. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 internal fun CollectionHeaderChrome(
     title: String,
@@ -843,7 +840,6 @@ internal fun CollectionHeaderChrome(
 }
 
 /** Server-supplied buckets retain their labels/order, including digits and non-Latin scripts. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun CollectionAlphabetRail(
     letters: List<CollectionLetter>,
@@ -941,7 +937,6 @@ private fun CollectionAlphabetRail(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun CollectionLetterButton(
     label: String,
@@ -993,14 +988,12 @@ private fun CollectionLetterButton(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ControlText(text: String) {
     Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium,
         maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ErrorNote(message: String, modifier: Modifier = Modifier) {
     Text(message, color = CinemaColors.Error, fontSize = 16.sp,
@@ -1009,7 +1002,6 @@ private fun ErrorNote(message: String, modifier: Modifier = Modifier) {
 }
 
 /** Drops below the Sort tab: one row per kind of order; choosing the current one flips its direction. */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun SortMenu(current: CollectionSort, below: Int, onDismiss: () -> Unit, onChoose: (CollectionSort) -> Unit) {
     val initial = remember { FocusRequester() }

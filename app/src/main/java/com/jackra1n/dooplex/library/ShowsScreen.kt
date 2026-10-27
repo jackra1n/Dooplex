@@ -74,7 +74,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import com.jackra1n.dooplex.artwork.ArtworkImage
 import com.jackra1n.dooplex.artwork.PosterRepository
@@ -103,7 +102,7 @@ import kotlinx.coroutines.launch
  * Parent navigation intent suppresses poster restoration until Down explicitly enters this header;
  * tab confirmation reveals all chrome while retaining the content viewport for deliberate re-entry.
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ShowsScreen(
     state: ShowBrowseState,
@@ -448,13 +447,11 @@ internal fun ShowsScreen(
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun ShowControlText(text: String) {
     Text(text, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun EpisodeCard(
     item: PlexBrowseItem?,
