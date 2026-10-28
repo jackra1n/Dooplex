@@ -1,5 +1,5 @@
 [tasks.build]
-description = "Build an optimized APK signed with the existing Android development key; crash reports and analytics stay off unless DOOPLEX_CRASH_URL / DOOPLEX_ANALYTICS_URL are set"
+description = "Build an optimized APK signed with the Android development key, or SIGNING_KEYSTORE / SIGNING_PASSWORD when set; crash reports and analytics stay off unless DOOPLEX_CRASH_URL / DOOPLEX_ANALYTICS_URL are set"
 shell = "bash -c"
 run = '''
 set -euo pipefail
@@ -7,10 +7,10 @@ printf 'Crash reports: %s\nAnalytics: %s\n' "${DOOPLEX_CRASH_URL:-off}" "${DOOPL
 ./gradlew :app:assembleRelease :app:validateSigningDebug
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 signer="${APKSIGNER:-$sdk/build-tools/36.0.0/apksigner}"
-key="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+key="${SIGNING_KEYSTORE:-${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore}"
+pass="${SIGNING_PASSWORD:-android}"
 apk="app/build/outputs/apk/release/dooplex-movies.apk"
-"$signer" sign --ks "$key" --ks-key-alias androiddebugkey \
-  --ks-pass pass:android --key-pass pass:android \
+"$signer" sign --ks "$key" --ks-pass "pass:$pass" --key-pass "pass:$pass" \
   --out "$apk" app/build/outputs/apk/release/app-release-unsigned.apk
 "$signer" verify "$apk"
 python3 tools/check-dex-access.py "$apk" "$sdk/build-tools/36.0.0/dexdump"
