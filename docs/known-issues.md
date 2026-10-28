@@ -47,3 +47,15 @@ When Android reports memory pressure (`onTrimMemory` at `RUNNING_LOW` or worse, 
 and above), `MainActivity` drops the decoded poster cache and the washes; cards on screen keep
 their own bitmaps. Being merely hidden behind the player (`UI_HIDDEN`) clears nothing, or every
 return would reload the posters. Analytics logs each call as a `lifecycle` event with `trim`.
+
+## The emulator crashes or never finishes booting
+
+**Symptom:** the emulator segfaults right after "Emulator is performing a full startup", or it runs
+but adb shows it as `offline` forever (2026-10-25 to 2026-10-28, Radeon RX 9070, Mesa 26.2).
+
+**Cause:** two problems. Software rendering (`-gpu swiftshader_indirect`, or `auto` when headless,
+which picks it) crashes the emulator. The crashes then left the AVD's data broken: `system_server`
+died every 5 s, so Android never booted. A fresh AVD on the same image booted in 25 s.
+
+**Status:** fixed by wiping the AVD's data and setting its graphics to Hardware (`-gpu host`).
+`tools/screenshot.sh` passes `-gpu host` itself.

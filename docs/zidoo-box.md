@@ -40,5 +40,6 @@ Developer options are hidden in Settings, and adb does not respond even with USB
 ## Quirks worth knowing
 
 - When the box is idle it stops drawing our window until a key is pressed.
-- The emulator was not a usable substitute: it crashed or stayed offline on this PC, and its GPU
-  is nothing like the box's anyway. All measurements come from the box itself.
+- The `Television_1080p` emulator (Android 11, like the box) runs Dooplex once set up as in
+  [known-issues.md](known-issues.md), and `mise run screenshot` uses it. Its GPU is nothing like
+  the box's, so all measurements still come from the box itself.
