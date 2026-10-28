@@ -1,9 +1,19 @@
 # Dooplex
 
-A fast and modern Plex client made for Zidoo media players. It browses your Plex library and plays
-through Zidoo's own player, so every format and audio passthrough the box supports keeps working.
-It is developed and tested on a Zidoo Z9X 8K, and may also run on other Android TV devices (Android
-11 or newer).
+A fast and modern Plex client made for Zidoo media players. It is developed and tested on a Zidoo
+Z9X 8K, and may also run on other Android TV devices (Android 11 or newer).
+
+## Why Dooplex
+
+Zidoo's own media browser is sluggish and wants your files over SMB or NFS, even when a Plex server
+already has them organized. Plex clients fix the library but not the playback: their players
+transcode or drop quality, or their interface is a chore with a remote. Dooplex takes the best of
+both:
+
+- **Zidoo's native player.** Dooplex browses Plex and hands the file to Zidoo's own player, so
+  Dolby Vision, HDR and lossless audio passthrough work just like they do on the box.
+- **A fast client with a good interface.** Built for the remote and tuned to stay smooth on the box:
+  posters load quickly, scrolling keeps up, and everything is a few clicks away.
 
 ![Dooplex Home with the demo library](docs/screenshots/home.png)
 
