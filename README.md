@@ -7,9 +7,6 @@ It is developed and tested on a Zidoo Z9X 8K, and may also run on other Android 
 
 ![Dooplex Home with the demo library](docs/screenshots/home.png)
 
-<sub>Shown with a demo library of open movies and public-domain classics; artwork credits in
-[demo/CREDITS.md](demo/CREDITS.md).</sub>
-
 ## Building
 
 ```sh
