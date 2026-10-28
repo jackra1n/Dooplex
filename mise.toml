@@ -18,11 +18,11 @@ printf 'Built %s\n' "$apk"
 '''
 
 [tasks.upload]
-description = "Build a development APK that reports crashes and analytics to this PC and submit it to the Zidoo web installer; override the address with ZIDOO_URL"
+description = "Build a development APK that reports crashes and analytics to this PC and submit it to the Zidoo web installer at ZIDOO_URL"
 shell = "bash -c"
 run = '''
 set -euo pipefail
-target="${ZIDOO_URL:-http://<zidoo-ip>:18888}"
+target="${ZIDOO_URL:?Set ZIDOO_URL to the Zidoo web installer, e.g. http://<box>:18888 in mise.local.toml}"
 host="${target#*://}"
 host="${host%%[:/]*}"
 pc=$(ip -4 route get "$host" 2>/dev/null | sed -nE 's/.* src ([0-9.]+).*/\1/p')

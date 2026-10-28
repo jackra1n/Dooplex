@@ -11,7 +11,7 @@ It is developed and tested on a Zidoo Z9X 8K, and may also run on other Android 
 
 ```sh
 mise run build       # app/build/outputs/apk/release/dooplex-movies.apk
-mise run upload      # build and install on a Zidoo (set ZIDOO_URL to yours)
+mise run upload      # build and install on a Zidoo (ZIDOO_URL in mise.local.toml)
 mise run screenshot  # docs/screenshots/home.png from the demo library on the TV emulator
 ```
 

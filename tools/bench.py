@@ -5,7 +5,7 @@ smoothly the development build drew it, from its analytics.
     python3 tools/bench.py [--pattern home|deep|movie|show|switch] [--cold memory|disk] [--passes N]
                            [--flags heromask=0,wash=1] [--label name]
 
-Needs `mise run receiver` and the app open on any screen. Each run starts from the same state: the
+Needs ZIDOO_URL, `mise run receiver` and the app open on any screen. Each run starts from the same state: the
 app rebuilds Home (home, deep) or reopens the library (movie, show), after dropping its poster caches
 when --cold asks for it, and every further pass returns focus to the first item. "deep" visits new
 rows and cards on Home, for cold runs; "switch" confirms the Movies, Home, TV Shows and Home tabs. Switches go to analytics/flags and commands to
@@ -17,12 +17,14 @@ import json
 import os
 import pathlib
 import statistics
+import sys
 import time
+import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ANALYTICS = ROOT / "analytics"
-ZIDOO = os.environ.get("ZIDOO_HOST", "<zidoo-ip>")
+ZIDOO = urllib.parse.urlsplit(os.environ.get("ZIDOO_URL", "")).hostname
 FRAME_MS = 1000 / 60
 STEP = 0.6
 HELD = 0.08
@@ -109,6 +111,8 @@ def stat(window, name):
 
 
 def main():
+    if not ZIDOO:
+        sys.exit("Set ZIDOO_URL to the Zidoo web installer, e.g. in mise.local.toml.")
     parser = argparse.ArgumentParser()
     parser.add_argument("--pattern", choices=["home", "deep", "movie", "show", "switch"], default="home")
     parser.add_argument("--cold", choices=["memory", "disk"])

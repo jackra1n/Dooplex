@@ -8,12 +8,20 @@ and analytics at this PC; `mise run receiver` collects them. Normal builds send 
 | Command | What it does |
 | --- | --- |
 | `mise run build` | Release build signed with the debug key, then `tools/check-dex-access.py` (see [r8-release-builds.md](r8-release-builds.md)). Crash reports and analytics **off**. |
-| `mise run upload` | Same build with both reporting URLs set to this PC, posted to the box's web installer (`ZIDOO_URL` overrides the box). |
+| `mise run upload` | Same build with both reporting URLs set to this PC, posted to the box's web installer at `ZIDOO_URL`. |
 | `mise run receiver` | Starts `tools/dev-receiver.py` on port **8797**. |
 | `mise run trace` | Asks the running app for a CPU trace (`TRACE_SECONDS`, default 10). |
 | `mise run screenshot` | Build, run on the TV emulator and save `docs/screenshots/<name>.png` (see below). |
 
 Port 8797, not 8787: another local tool already used 8787.
+
+Keep the box's address out of the repo in a git-ignored `mise.local.toml`, which mise loads next
+to `mise.toml`; `tools/bench.py` reads the same variable:
+
+```toml
+[env]
+ZIDOO_URL = "http://<box>:18888"
+```
 
 After an upload, the install kills the app. Launch it again with
 `curl "http://<box>:9529/ZidooControlCenter/Apps/openApp?packageName=com.jackra1n.dooplex"`
