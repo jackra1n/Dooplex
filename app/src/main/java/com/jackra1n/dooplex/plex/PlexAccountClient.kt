@@ -2,6 +2,7 @@ package com.jackra1n.dooplex.plex
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.jackra1n.dooplex.BuildConfig
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -27,7 +28,7 @@ class PlexAccountClient(private val clientId: String) {
 
     suspend fun createPin(): PlexPin = withContext(Dispatchers.IO) {
         json {
-            val value = JSONObject(request("https://plex.tv/api/v2/pins", method = "POST", body = "strong=false"))
+            val value = JSONObject(request("$PLEX_TV/api/v2/pins", method = "POST", body = "strong=false"))
             val id = value.get("id").toString()
             val code = value.getString("code")
             if (!Regex("[0-9]+").matches(id) || !Regex("[A-Za-z0-9]+").matches(code)) {
@@ -38,7 +39,7 @@ class PlexAccountClient(private val clientId: String) {
             } catch (_: Exception) {
                 throw IOException("Plex returned an invalid link expiry.")
             }
-            val qr = value.optString("qr").takeIf(::plexHosted) ?: "https://plex.tv/api/v2/pins/qr/${encode(code)}"
+            val qr = value.optString("qr").takeIf(::plexHosted) ?: "$PLEX_TV/api/v2/pins/qr/${encode(code)}"
             PlexPin(id, code, expires, qr)
         }
     }
@@ -89,7 +90,7 @@ class PlexAccountClient(private val clientId: String) {
             "A valid Plex link code is required."
         }
         json {
-            val value = JSONObject(request("https://plex.tv/api/v2/pins/${pin.id}?code=${encode(pin.code)}", pinPoll = true))
+            val value = JSONObject(request("$PLEX_TV/api/v2/pins/${pin.id}?code=${encode(pin.code)}", pinPoll = true))
             if (value.isNull("authToken")) null else value.optString("authToken").takeIf { headerValue(it) }
         }
     }
@@ -97,7 +98,7 @@ class PlexAccountClient(private val clientId: String) {
     suspend fun account(token: String): PlexAccount = withContext(Dispatchers.IO) {
         require(headerValue(token)) { "A valid Plex account token is required." }
         json {
-            val value = JSONObject(request("https://plex.tv/api/v2/user", token = token))
+            val value = JSONObject(request("$PLEX_TV/api/v2/user", token = token))
             val name = sequenceOf("friendlyName", "username", "title").map { value.optString(it) }
                 .firstOrNull { it.isNotBlank() && it != "null" } ?: "Plex account"
             PlexAccount(token, name, value.optString("thumb").takeIf(::plexHosted))
@@ -112,7 +113,7 @@ class PlexAccountClient(private val clientId: String) {
                 var start = 0
                 while (true) {
                     val page = JSONObject(request(
-                        "https://discover.provider.plex.tv/library/sections/watchlist/all?sort=watchlistedAt:desc" +
+                        "$DISCOVER/library/sections/watchlist/all?sort=watchlistedAt:desc" +
                             "&includeCollections=1&includeExternalMedia=1" +
                             "&X-Plex-Container-Start=$start&X-Plex-Container-Size=$WATCHLIST_PAGE",
                         token = token,
@@ -146,13 +147,13 @@ class PlexAccountClient(private val clientId: String) {
         val id = guid.substringAfterLast('/')
         require(guid.startsWith("plex://") && id.isNotEmpty() && id.all { it.isLetterOrDigit() }) { "This title can't be added to a watchlist." }
         val action = if (watchlisted) "addToWatchlist" else "removeFromWatchlist"
-        request("https://discover.provider.plex.tv/actions/$action?ratingKey=$id", token = token, method = "PUT", body = "")
+        request("$DISCOVER/actions/$action?ratingKey=$id", token = token, method = "PUT", body = "")
     }
 
     suspend fun servers(token: String): List<PlexServer> = withContext(Dispatchers.IO) {
         require(headerValue(token)) { "A valid Plex account token is required." }
         json {
-            val resources = JSONArray(request("https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1", token = token))
+            val resources = JSONArray(request("$PLEX_TV/api/v2/resources?includeHttps=1&includeRelay=1", token = token))
             buildList {
                 for (index in 0 until resources.length()) {
                     val resource = resources.getJSONObject(index)
@@ -312,6 +313,9 @@ class PlexAccountClient(private val clientId: String) {
 
     private companion object {
         const val WATCHLIST_PAGE = 100
+        // Development builds can point every account request at tools/demo-server.py instead.
+        val PLEX_TV = BuildConfig.DEMO_URL.ifEmpty { "https://plex.tv" }
+        val DISCOVER = BuildConfig.DEMO_URL.ifEmpty { "https://discover.provider.plex.tv" }
 
         fun headerValue(value: String): Boolean = value.isNotEmpty() && value != "null" && value.all { it.code in 33..126 }
         fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
