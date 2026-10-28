@@ -7,7 +7,7 @@ and analytics at this PC; `mise run receiver` collects them. Normal builds send 
 
 | Command | What it does |
 | --- | --- |
-| `mise run build` | Release build signed with the debug key, then `tools/check-dex-access.py` (see [r8-release-builds.md](r8-release-builds.md)). Crash reports and analytics **off**. |
+| `mise run build` | Release build signed with the debug key (or `SIGNING_KEYSTORE`, see [releases.md](releases.md)), then `tools/check-dex-access.py` (see [r8-release-builds.md](r8-release-builds.md)). Crash reports and analytics **off**. |
 | `mise run upload` | Same build with both reporting URLs set to this PC, posted to the box's web installer at `ZIDOO_URL`. |
 | `mise run receiver` | Starts `tools/dev-receiver.py` on port **8797**. |
 | `mise run trace` | Asks the running app for a CPU trace (`TRACE_SECONDS`, default 10). |
