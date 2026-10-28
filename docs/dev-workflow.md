@@ -11,6 +11,7 @@ and analytics at this PC; `mise run receiver` collects them. Normal builds send 
 | `mise run upload` | Same build with both reporting URLs set to this PC, posted to the box's web installer (`ZIDOO_URL` overrides the box). |
 | `mise run receiver` | Starts `tools/dev-receiver.py` on port **8797**. |
 | `mise run trace` | Asks the running app for a CPU trace (`TRACE_SECONDS`, default 10). |
+| `mise run screenshot` | Build, run on the TV emulator and save `docs/screenshots/<name>.png` (see below). |
 
 Port 8797, not 8787: another local tool already used 8787.
 
@@ -68,3 +69,17 @@ RenderThread or GPU work; for those, look at the frame's `sync`, `cmd` and `swap
 `mapping.txt` must come from the build that produced the trace. Names R8 merged can still come out
 misleading (one trace blamed 375 ms on `FontWeight$Companion.e`); treat a surprising leaf name as a
 hint, not a fact.
+
+## Screenshots
+
+`mise run screenshot [name] [KEY...]` builds the app, boots the `Television_1080p` emulator in the
+background (unless it is already running; `SCREENSHOT_AVD` picks another), installs the build,
+restarts the app and saves `docs/screenshots/<name>.png` (default `home`). Each KEY is an Android
+key name without `KEYCODE_`, pressed before the shot: `mise run screenshot movies DPAD_UP
+DPAD_RIGHT DPAD_CENTER`.
+
+- It sets the emulator's density to 240, so the 1920 × 1080 screen has the box's 1280 × 720 dp layout.
+- It saves once three captures in a row are identical, so posters have loaded.
+- A cold boot waits for Android to validate the network (about 30 s), or Plex fails to load.
+- On the first run the app shows the sign-in screen; the script prints the plex.tv/link code and
+  waits. The emulator keeps the sign-in.

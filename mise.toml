@@ -59,3 +59,8 @@ mkdir -p analytics
 echo "${TRACE_SECONDS:-10}" > analytics/trace-request
 printf 'Requested a %s s trace; it starts with the next analytics upload (within 4 s).\n' "${TRACE_SECONDS:-10}"
 '''
+
+[tasks.screenshot]
+description = "Build, run on the Television_1080p emulator (SCREENSHOT_AVD) and save docs/screenshots/<name>.png; args: [name] [KEY...], e.g. movies DPAD_UP DPAD_RIGHT DPAD_CENTER"
+depends = ["build"]
+run = "tools/screenshot.sh"
