@@ -61,6 +61,5 @@ printf 'Requested a %s s trace; it starts with the next analytics upload (within
 '''
 
 [tasks.screenshot]
-description = "Build, run on the Television_1080p emulator (SCREENSHOT_AVD) and save docs/screenshots/<name>.png; args: [name] [KEY...], e.g. movies DPAD_UP DPAD_RIGHT DPAD_CENTER"
-depends = ["build"]
+description = "Build against the demo library, run on the Television_1080p emulator (SCREENSHOT_AVD) and save docs/screenshots/<name>.png; args: [name] [KEY...], e.g. movies DPAD_UP DPAD_RIGHT DPAD_CENTER"
 run = "tools/screenshot.sh"

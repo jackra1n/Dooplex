@@ -72,14 +72,24 @@ hint, not a fact.
 
 ## Screenshots
 
-`mise run screenshot [name] [KEY...]` builds the app, boots the `Television_1080p` emulator in the
-background (unless it is already running; `SCREENSHOT_AVD` picks another), installs the build,
-restarts the app and saves `docs/screenshots/<name>.png` (default `home`). Each KEY is an Android
-key name without `KEYCODE_`, pressed before the shot: `mise run screenshot movies DPAD_UP
-DPAD_RIGHT DPAD_CENTER`.
+`mise run screenshot [name] [KEY...]` shows the app with a demo library, never a real account, and
+saves `docs/screenshots/<name>.png` (default `home`). Each KEY is an Android key name without
+`KEYCODE_`, pressed before the shot: `mise run screenshot movies DPAD_UP DPAD_RIGHT DPAD_CENTER`.
 
-- It sets the emulator's density to 240, so the 1920 × 1080 screen has the box's 1280 × 720 dp layout.
-- It saves once three captures in a row are identical, so posters have loaded.
-- A cold boot waits for Android to validate the network (about 30 s), or Plex fails to load.
-- On the first run the app shows the sign-in screen; the script prints the plex.tv/link code and
-  waits. The emulator keeps the sign-in.
+1. `tools/demo-art.py` downloads the artwork named in `demo/library.json` once, checks each file's
+   pinned sha256, crops it into the ignored `demo/art/` and rewrites `demo/CREDITS.md`. Wikimedia
+   answers 429 to parallel downloads, so it fetches one file at a time.
+2. `tools/demo-server.py` starts on port 8798: a fake Plex server, plex.tv and Discover in one. It
+   approves any sign-in code at once and offers one server.
+3. The build gets `DOOPLEX_DEMO_URL=http://10.0.2.2:8798` (the emulator's address for this PC),
+   which sends the plex.tv and Discover requests there. Like the reporting URLs it is empty unless
+   set. The APK this leaves in `app/build` talks only to the demo; `mise run build` again before
+   installing it anywhere else.
+4. The `Television_1080p` emulator boots in the background unless it is already running
+   (`SCREENSHOT_AVD` picks another); a cold boot waits for Android to validate the network, about
+   30 s. Density 240 gives the box's 1280 × 720 dp layout.
+5. The app's data is cleared, so every run signs in fresh, and the shot is saved once three
+   captures in a row are identical.
+
+The library and its pictures come from [plx-native](https://github.com/GLinnik21/plx-native)'s demo
+library (GPL-3.0): open movies and public-domain classics, credited in `demo/CREDITS.md`.
