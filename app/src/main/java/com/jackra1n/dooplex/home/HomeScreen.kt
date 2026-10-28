@@ -211,7 +211,7 @@ internal fun HomeScreen(
         val columns = 7
         val cardWidth = (maxWidth - edge * 2 - 18.dp * (columns - 1)) / columns
         val artworkWidth = artworkBucket(with(density) { cardWidth.toPx() })
-        val heroHeight = if (shown != null) maxHeight * 0.8f else maxHeight * 0.3f
+        val heroHeight = if (shown != null) maxHeight * 0.72f else maxHeight * 0.3f
         val heroHeightPx = with(density) { heroHeight.toPx() }
         val restLine = with(density) { 152.dp.toPx() }
         val shelfSpec = remember(listState, restLine, heroHeightPx) {
