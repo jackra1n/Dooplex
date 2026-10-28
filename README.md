@@ -19,6 +19,18 @@ both:
 
 ![Dooplex Movies with the demo library](docs/screenshots/movies.png)
 
+## Installation
+
+1. Download the APK from the [latest release](https://github.com/jackra1n/Dooplex/releases/latest).
+2. Install it on the Zidoo, either way works:
+   - Open `http://<zidoo-ip>:18888` in a browser on the same network and upload the APK. The page
+     may report an error even though the install worked.
+   - Copy it to a USB drive and open it in the Zidoo's file manager.
+3. Open Dooplex, scan the QR code or enter the code at [plex.tv/link](https://plex.tv/link), then
+   pick your server.
+
+Playback goes to Zidoo's own player automatically; there is nothing to set up.
+
 ## Building
 
 ```sh
