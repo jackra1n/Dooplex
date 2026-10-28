@@ -13,8 +13,9 @@ android {
         applicationId = "com.jackra1n.dooplex"
         minSdk = 30
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        val appVersion = rootProject.file("version.txt").readText().trim()
+        versionName = appVersion
+        versionCode = appVersion.split(".").fold(0) { code, part -> code * 1000 + part.toInt() }
         val crashReportUrl = providers.environmentVariable("DOOPLEX_CRASH_URL").getOrElse("")
         buildConfigField("String", "CRASH_REPORT_URL", "\"$crashReportUrl\"")
         val analyticsUrl = providers.environmentVariable("DOOPLEX_ANALYTICS_URL").getOrElse("")
