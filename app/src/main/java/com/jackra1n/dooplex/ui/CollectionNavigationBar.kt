@@ -305,7 +305,7 @@ internal fun CollectionNavigationBar(
                                     }
                                 }
                             },
-                        ).padding(horizontal = unit * 18),
+                        ).padding(horizontal = if (label.isEmpty()) 0.dp else unit * 18),
                     contentAlignment = Alignment.Center,
                 ) {
                     val face: @Composable (Color, Modifier) -> Unit = { ink, modifier ->
