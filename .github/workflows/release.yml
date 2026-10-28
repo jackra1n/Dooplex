@@ -15,7 +15,7 @@ jobs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
 
   apk:
@@ -23,12 +23,12 @@ jobs:
     if: needs.release-please.outputs.created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: jdx/mise-action@v2
+      - uses: jdx/mise-action@v5
       - run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0" "platforms;android-37.0"
           base64 -d <<< "$KEYSTORE" > "$RUNNER_TEMP/release.jks"
