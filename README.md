@@ -5,11 +5,17 @@ through Zidoo's own player, so every format and audio passthrough the box suppor
 It is developed and tested on a Zidoo Z9X 8K, and may also run on other Android TV devices (Android
 11 or newer).
 
+![Dooplex Home with the demo library](docs/screenshots/home.png)
+
+<sub>Shown with a demo library of open movies and public-domain classics; artwork credits in
+[demo/CREDITS.md](demo/CREDITS.md).</sub>
+
 ## Building
 
 ```sh
-mise run build    # app/build/outputs/apk/release/dooplex-movies.apk
-mise run upload   # build and install on a Zidoo (set ZIDOO_URL to yours)
+mise run build       # app/build/outputs/apk/release/dooplex-movies.apk
+mise run upload      # build and install on a Zidoo (set ZIDOO_URL to yours)
+mise run screenshot  # docs/screenshots/home.png from the demo library on the TV emulator
 ```
 
 ## Thanks
