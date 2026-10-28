@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
 ART = DEMO / "art"
+LOGO = (800, 310)
 SIZES = {"poster": (600, 900), "art": (1920, 1080), "still": (960, 540)}
 CENTERING = {"center": (0.5, 0.5), "left": (0, 0.5), "right": (1, 0.5), "top": (0.5, 0), "bottom": (0.5, 1)}
 AGENT = "Dooplex demo-art/1.0 (https://github.com/jackra1n/Dooplex)"
@@ -25,7 +26,7 @@ AGENT = "Dooplex demo-art/1.0 (https://github.com/jackra1n/Dooplex)"
 
 def images(library):
     for item in library["movies"] + library["shows"]:
-        for shape in ("poster", "art"):
+        for shape in ("poster", "art", "logo"):
             if item.get(shape):
                 yield f"{item['id']}-{shape}", shape, item[shape]
         for season in item.get("seasons", []):
@@ -51,11 +52,18 @@ def fetch(url, sha256):
 
 def derive(job, assets):
     name, shape, spec = job
-    target = ART / f"{name}.jpg"
+    target = ART / f"{name}.{'png' if shape == 'logo' else 'jpg'}"
     if target.exists():
         return
     source = assets[spec["asset"]]
     image = Image.open(io.BytesIO(fetch(source["url"], source["sha256"])))
+    if shape == "logo":
+        image = image.convert("RGBA")
+        image = image.crop(image.getchannel("A").getbbox())
+        image.thumbnail(LOGO)
+        image.save(target)
+        print(f"Wrote {target.relative_to(ROOT)}")
+        return
     if image.mode in ("RGBA", "LA", "P"):
         image = image.convert("RGBA")
         ground = Image.new("RGBA", image.size, "black")

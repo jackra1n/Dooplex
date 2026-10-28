@@ -279,6 +279,10 @@
    "art": {
     "asset": "bs-charge-header",
     "anchor": "right"
+   },
+   "logo": {
+    "asset": "bs-logo-charge",
+    "anchor": "center"
    }
   },
   {
@@ -339,6 +343,10 @@
    "art": {
     "asset": "tears-of-steel-frame-07",
     "anchor": "left"
+   },
+   "logo": {
+    "asset": "bs-logo-tears-of-steel",
+    "anchor": "center"
    }
   },
   {
@@ -383,6 +391,10 @@
    "art": {
     "asset": "bs-cosmos-laundromat-header",
     "anchor": "right"
+   },
+   "logo": {
+    "asset": "bs-logo-cosmos-laundromat",
+    "anchor": "center"
    }
   },
   {
@@ -414,6 +426,10 @@
    },
    "art": {
     "asset": "big-buck-bunny-backdrop",
+    "anchor": "center"
+   },
+   "logo": {
+    "asset": "bs-logo-big-buck-bunny",
     "anchor": "center"
    }
   },
@@ -460,6 +476,10 @@
    "art": {
     "asset": "bs-elephants-dream-header",
     "anchor": "right"
+   },
+   "logo": {
+    "asset": "bs-logo-elephants-dream",
+    "anchor": "center"
    }
   },
   {
@@ -1025,6 +1045,10 @@
    "art": {
     "asset": "bs-wing-it-header",
     "anchor": "center"
+   },
+   "logo": {
+    "asset": "bs-logo-wing-it",
+    "anchor": "center"
    }
   },
   {
@@ -1054,6 +1078,10 @@
    "art": {
     "asset": "bs-coffee-run-header",
     "anchor": "right"
+   },
+   "logo": {
+    "asset": "bs-logo-coffee-run",
+    "anchor": "center"
    }
   },
   {
@@ -1087,6 +1115,10 @@
    "art": {
     "asset": "bs-hero-header",
     "anchor": "left"
+   },
+   "logo": {
+    "asset": "bs-logo-hero",
+    "anchor": "center"
    }
   },
   {
@@ -1133,6 +1165,10 @@
    "art": {
     "asset": "bs-glass-half-header",
     "anchor": "center"
+   },
+   "logo": {
+    "asset": "bs-logo-glass-half",
+    "anchor": "center"
    }
   },
   {
@@ -1170,6 +1206,10 @@
    "art": {
     "asset": "bs-dailydweebs-header",
     "anchor": "center"
+   },
+   "logo": {
+    "asset": "bs-logo-the-daily-dweebs",
+    "anchor": "center"
    }
   },
   {
@@ -1201,6 +1241,10 @@
    },
    "art": {
     "asset": "bs-singularity-header",
+    "anchor": "center"
+   },
+   "logo": {
+    "asset": "bs-logo-singularity",
     "anchor": "center"
    }
   },
@@ -1386,7 +1430,11 @@
       }
      ]
     }
-   ]
+   ],
+   "logo": {
+    "asset": "bs-logo-caminandes-2",
+    "anchor": "center"
+   }
   },
   {
    "id": "hubblecast",
@@ -1936,6 +1984,102 @@
    "url": "https://studio.blender.org/files/public/header/project/2e/cb/2ecb2976719298685517e7a559f7f770.png",
    "source_page": "https://studio.blender.org/projects/hero/",
    "sha256": "e656dc4ff4d88a11e7481a13289d9906ec85306b853adfdcaab4c230080e0f26",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-big-buck-bunny": {
+   "url": "https://studio.blender.org/files/public/logo/fe/58/fe5874a710ec08e1cb5fab880cda06a7.png",
+   "source_page": "https://studio.blender.org/projects/big-buck-bunny/",
+   "sha256": "3193cc2a829c97b1c95fbd0e4bea3a786cd8b92e9aa6bae5bf64a6fd1a03dca7",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-caminandes-2": {
+   "url": "https://studio.blender.org/files/public/logo/fe/da/fedad13fdb4918e53c24922d08f22998.png",
+   "source_page": "https://studio.blender.org/projects/caminandes-2/",
+   "sha256": "a7c48ca65588c0ddaa041dfac39673c6de53c722c60d3fde5d2b23ba9d28d3d8",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-charge": {
+   "url": "https://studio.blender.org/files/public/logo/53/9d/539dd80ede780b3ea687461ace2835c6.png",
+   "source_page": "https://studio.blender.org/projects/charge/",
+   "sha256": "28a963f940714cb6e501315d20f04b4b9663a520d2b82d17197dc085dfe934fc",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-coffee-run": {
+   "url": "https://studio.blender.org/files/public/logo/d7/f2/d7f2b33ae8c0806edd512b294ca3b0b4.png",
+   "source_page": "https://studio.blender.org/projects/coffee-run/",
+   "sha256": "431b08839a27af8c619dba4a5d3efc1bddcc3876466c1e7339164e24b3df43c3",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-cosmos-laundromat": {
+   "url": "https://studio.blender.org/files/public/logo/fe/b6/feb68ab2e1bc54649654b790347e4ec0.png",
+   "source_page": "https://studio.blender.org/projects/cosmos-laundromat/",
+   "sha256": "3fc185b6662b8d5dc4fa3a4a252928f8e5db8eaca9b23efdac4baf2e42cdf59d",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-elephants-dream": {
+   "url": "https://studio.blender.org/files/public/logo/b0/be/b0bee0f09fac84df04fab4f91b9458cd.png",
+   "source_page": "https://studio.blender.org/projects/elephants-dream/",
+   "sha256": "6afc6f922eede840f6f4c56331afb33cecd8199ef8647963229c0a9c279ba840",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-glass-half": {
+   "url": "https://studio.blender.org/files/public/logo/e4/ba/e4ba6b3e42c0904b59a06d20324016bd.png",
+   "source_page": "https://studio.blender.org/projects/glass-half/",
+   "sha256": "0602b610a4feb32170df00bf7d024347cf85a3aa90409c310218e4585ad22069",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-hero": {
+   "url": "https://studio.blender.org/files/public/logo/83/5f/835f5a09dffa13f60eb73185703bf29f.png",
+   "source_page": "https://studio.blender.org/projects/hero/",
+   "sha256": "ec1241bf64af5ae3007e41e13fa6334cfdd34fa52afbac4c11a4a6fd3e55338c",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-singularity": {
+   "url": "https://studio.blender.org/files/public/logo/85/77/8577466d4b7170f4cfe1a9933373e84c.webp",
+   "source_page": "https://studio.blender.org/projects/singularity/",
+   "sha256": "3615e07750d8cf7bb39f17a206506a6e05d1f9978c94ac59e18ac81bfea0ca5d",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-tears-of-steel": {
+   "url": "https://studio.blender.org/files/public/logo/d9/10/d910023b9c2157ebcc1416026f2b1a03.png",
+   "source_page": "https://studio.blender.org/projects/tears-of-steel/",
+   "sha256": "c4f945cc05beaf76574f0a2ba983a03ffb88c754f8fc4b914f5c58db0851b069",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-the-daily-dweebs": {
+   "url": "https://studio.blender.org/files/public/logo/82/cc/82cccb55d35607c82a2f4e9b9d85a23a.png",
+   "source_page": "https://studio.blender.org/projects/dailydweebs/",
+   "sha256": "d2229d32084106c61b530e899cbda992033422ba7e02ace954a2fb70903655c4",
+   "licence": "CC BY 4.0",
+   "author": "Blender Studio",
+   "attribution": "© Blender Foundation | studio.blender.org"
+  },
+  "bs-logo-wing-it": {
+   "url": "https://studio.blender.org/files/public/logo/97/cd/97cd0265392e567290abd8fa2aa6b82c.png",
+   "source_page": "https://studio.blender.org/projects/wing-it/",
+   "sha256": "4cbf3455e06f43bd617c660ace52222243f35d5604a9d000b919a28fb02d345e",
    "licence": "CC BY 4.0",
    "author": "Blender Studio",
    "attribution": "© Blender Foundation | studio.blender.org"

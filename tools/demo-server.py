@@ -72,6 +72,10 @@ def common(entry, key, kind, section):
     thumb, art = f"/library/metadata/{key}/thumb/1", f"/library/metadata/{key}/art/1"
     images[thumb] = f"{entry['id']}-poster.jpg"
     images[art] = f"{entry['id']}-art.jpg"
+    logo = []
+    if entry.get("logo"):
+        images[f"/library/metadata/{key}/clearLogo/1"] = f"{entry['id']}-logo.png"
+        logo = [{"type": "clearLogo", "url": f"/library/metadata/{key}/clearLogo/1"}]
     return {
         "ratingKey": key, "key": f"/library/metadata/{key}", "guid": guid(kind, entry["id"]), "type": kind,
         "title": entry["title"], "titleSort": entry.get("titleSort", entry["title"]), "year": entry.get("year"),
@@ -81,6 +85,7 @@ def common(entry, key, kind, section):
         "Genre": tags(entry.get("genres")), "Director": tags(entry.get("directors")),
         "Writer": tags(entry.get("writers")),
         "Role": [{"tag": person["name"], "role": person.get("role", "")} for person in entry.get("cast", [])],
+        "Image": logo,
     }
 
 
@@ -286,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/photo/:/transcode":
             file = images.get(query.get("url", [""])[0])
             if file and (ART / file).exists():
-                return self.reply(200, (ART / file).read_bytes(), "image/jpeg")
+                return self.reply(200, (ART / file).read_bytes(), "image/png" if file.endswith(".png") else "image/jpeg")
             return self.reply(404, b"", "text/plain")
         body = answer(method, url.path, query, self.headers.get("Host", ""))
         if body is None:
