@@ -15,9 +15,9 @@ both:
 - **A fast client with a good interface.** Built for the remote and tuned to stay smooth on the box:
   posters load quickly, scrolling keeps up, and everything is a few clicks away.
 
-![Dooplex Home with the demo library](docs/screenshots/home.png)
+![Dooplex Home with the demo library](docs/screenshots/home.webp)
 
-![Dooplex Movies with the demo library](docs/screenshots/movies.png)
+![Dooplex Movies with the demo library](docs/screenshots/movies.webp)
 
 ## Installation
 
@@ -36,7 +36,7 @@ Playback goes to Zidoo's own player automatically; there is nothing to set up.
 ```sh
 mise run build       # app/build/outputs/apk/release/dooplex.apk
 mise run upload      # build and install on a Zidoo (ZIDOO_URL in mise.local.toml)
-mise run screenshot  # docs/screenshots/home.png from the demo library on the TV emulator
+mise run screenshot  # docs/screenshots/home.webp from the demo library on the TV emulator
 ```
 
 ## Thanks

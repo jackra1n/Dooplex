@@ -11,7 +11,7 @@ and analytics at this PC; `mise run receiver` collects them. Normal builds send 
 | `mise run upload` | Same build with both reporting URLs set to this PC, posted to the box's web installer at `ZIDOO_URL`. |
 | `mise run receiver` | Starts `tools/dev-receiver.py` on port **8797**. |
 | `mise run trace` | Asks the running app for a CPU trace (`TRACE_SECONDS`, default 10). |
-| `mise run screenshot` | Build, run on the TV emulator and save `docs/screenshots/<name>.png` (see below). |
+| `mise run screenshot` | Build, run on the TV emulator and save `docs/screenshots/<name>.webp` (see below). |
 
 Port 8797, not 8787: another local tool already used 8787.
 
@@ -81,7 +81,7 @@ hint, not a fact.
 ## Screenshots
 
 `mise run screenshot [name] [KEY...]` shows the app with a demo library, never a real account, and
-saves `docs/screenshots/<name>.png` (default `home`). Each KEY is an Android key name without
+saves `docs/screenshots/<name>.webp` (default `home`). Each KEY is an Android key name without
 `KEYCODE_`, pressed before the shot: `mise run screenshot movies DPAD_UP DPAD_RIGHT DPAD_CENTER`.
 
 1. `tools/demo-art.py` downloads the artwork named in `demo/library.json` once, checks each file's
@@ -97,7 +97,8 @@ saves `docs/screenshots/<name>.png` (default `home`). Each KEY is an Android key
    (`SCREENSHOT_AVD` picks another); a cold boot waits for Android to validate the network, about
    30 s. Density 240 gives the box's 1280 × 720 dp layout.
 5. The app's data is cleared, so every run signs in fresh, and the shot is saved once three
-   captures in a row are identical.
+   captures in a row are identical. It is saved as a 1600 × 900 WebP at quality 85: about 100 KB
+   instead of the 2 MB of the full-size PNG.
 
 The library and its pictures come from [plx-native](https://github.com/GLinnik21/plx-native)'s demo
 library (GPL-3.0): open movies and public-domain classics, credited in `demo/CREDITS.md`.

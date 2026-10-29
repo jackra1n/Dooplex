@@ -11,7 +11,7 @@ avd="${SCREENSHOT_AVD:-Television_1080p}"
 port=8798
 apk="app/build/outputs/apk/release/dooplex.apk"
 app="com.jackra1n.dooplex"
-out="docs/screenshots/$name.png"
+out="docs/screenshots/$name.webp"
 frame=$(mktemp)
 server=""
 emulator=""
@@ -85,5 +85,6 @@ done
 (( $# == 0 )) || settle
 
 mkdir -p "$(dirname "$out")"
-cp "$frame" "$out"
+python3 -c 'import sys; from PIL import Image
+Image.open(sys.argv[1]).convert("RGB").resize((1600, 900), Image.LANCZOS).save(sys.argv[2], quality=85, method=6)' "$frame" "$out"
 printf 'Saved %s\n' "$out"
