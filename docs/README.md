@@ -9,6 +9,7 @@ a measured stutter, a crash, or an evening on the Zidoo.
 | [known-issues.md](known-issues.md) | Problems we know about, why they happen, and their status. Check here first. |
 | [zidoo-box.md](zidoo-box.md) | The Zidoo Z9X 8K: its services, what is locked, how we reach it. |
 | [dev-workflow.md](dev-workflow.md) | Building, installing, crash reports, analytics, traces. |
+| [ci.md](ci.md) | The build check on every pull request and push to `main`. |
 | [releases.md](releases.md) | Versions, release-please, the release key and the APK workflow. |
 | [measuring-performance.md](measuring-performance.md) | How we measure smoothness, what the numbers mean, current baselines. |
 | [performance-decisions.md](performance-decisions.md) | What we changed for smoothness, what we tried that did not matter, and why. |
