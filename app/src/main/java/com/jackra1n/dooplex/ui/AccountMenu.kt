@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jackra1n.dooplex.BuildConfig
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 
 /**
@@ -149,6 +150,8 @@ private fun AccountMenu(
             MenuRow("Switch server", Modifier.focusRequester(first), detail = serverName, more = true, onClick = onSwitchServer)
             MenuDivider()
             MenuRow("Sign out") { confirming = true }
+            Text("Dooplex ${BuildConfig.VERSION_NAME}", color = CinemaColors.Muted, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
         }
     }
 }
