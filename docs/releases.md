@@ -33,5 +33,6 @@ installed app, so switching a box between the two needs an uninstall first.
 - To sign locally with it:
   `SIGNING_KEYSTORE=~/.android/dooplex-release.jks SIGNING_PASSWORD="$(cat ~/.android/dooplex-release.password)" mise run build`.
 - release-please runs with `RELEASE_PLEASE_TOKEN`, a personal access token, as in czkawka-web.
-  GitHub starts no workflows for the workflow's own token, so with it `ci.yml` would never build the
-  release pull request.
+  Unlike the workflow's own token, its pull requests and tags can start other workflows.
+- The only build is the APK job after a release (or a manual run); there is no build on pushes or
+  pull requests.
