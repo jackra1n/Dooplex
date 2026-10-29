@@ -19,13 +19,6 @@ both:
 
 ![Dooplex Movies with the demo library](docs/screenshots/movies.webp)
 
-## Requirements
-
-- A Zidoo media player, or another Android TV device with Android 11 or newer.
-- A Plex account and a Plex server with movie or TV show libraries.
-- A fast connection between the box and the server, ideally the same home network. Dooplex plays
-  the original file without transcoding, so a 4K remux needs the full bitrate.
-
 ## Installation
 
 1. Download the APK from the [latest release](https://github.com/jackra1n/Dooplex/releases/latest).
@@ -50,12 +43,6 @@ mise run screenshot  # docs/screenshots/home.webp from the demo library on the T
 
 Dooplex is heavily inspired by [plx-native](https://github.com/GLinnik21/plx-native), both in its
 focus on performance and in its interface. Thanks for the inspiration and its amazing work.
-
-## Privacy
-
-Dooplex only talks to your Plex server, Plex's own services (plex.tv) and Zidoo's player on the box
-itself. Release builds have no analytics or crash reporting; those exist only in development builds
-made with `mise run upload`.
 
 ## License
 
