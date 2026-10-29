@@ -31,6 +31,36 @@ both:
 
 Playback goes to Zidoo's own player automatically; there is nothing to set up.
 
+## FAQ
+
+**Is Dooplex only for Zidoo?**
+It is made for Zidoo and plays through Zidoo's own player. It also runs on other Android TV devices
+with Android 11 or newer, but there it hands videos to the device's default player, which has to
+decode them itself, and Plex only learns where you stopped once you close it.
+
+**Will it work on my Zidoo?**
+It is developed and tested on a Z9X 8K. Other Zidoo models on Android 11 or newer should work but
+are untested; models still on Android 9 can't install it. If you try one, an issue saying how it
+went is very welcome.
+
+**Does it transcode?**
+No, it always plays the original file. The box needs a connection to your server that keeps up
+with the file's bitrate, which for 4K remuxes usually means the same home network.
+
+**Does my watch progress sync with Plex?**
+Yes. Plex shows what is playing, saves where you stopped and marks things as watched, just like
+with any other Plex app.
+
+**Do I need Plex Pass?**
+Not to play from your own server at home. Outside your home network, Plex's usual rules apply.
+
+**What about music, photos or live TV?**
+Dooplex shows movie and TV show libraries only.
+
+**How do I update?**
+Download the new APK from the releases and install it the same way. It installs over the old
+version and keeps you signed in.
+
 ## Building
 
 ```sh
