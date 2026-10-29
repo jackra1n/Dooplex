@@ -34,7 +34,7 @@ Playback goes to Zidoo's own player automatically; there is nothing to set up.
 ## Building
 
 ```sh
-mise run build       # app/build/outputs/apk/release/dooplex-movies.apk
+mise run build       # app/build/outputs/apk/release/dooplex.apk
 mise run upload      # build and install on a Zidoo (ZIDOO_URL in mise.local.toml)
 mise run screenshot  # docs/screenshots/home.png from the demo library on the TV emulator
 ```

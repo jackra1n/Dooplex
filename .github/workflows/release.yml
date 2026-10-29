@@ -33,7 +33,7 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0" "platforms;android-37.0"
           base64 -d <<< "$KEYSTORE" > "$RUNNER_TEMP/release.jks"
           SIGNING_KEYSTORE="$RUNNER_TEMP/release.jks" mise run build
-          cp app/build/outputs/apk/release/dooplex-movies.apk "dooplex-$TAG.apk"
+          cp app/build/outputs/apk/release/dooplex.apk "dooplex-$TAG.apk"
           gh release upload "$TAG" "dooplex-$TAG.apk"
         env:
           KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}

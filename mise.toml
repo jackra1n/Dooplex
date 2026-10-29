@@ -9,7 +9,7 @@ sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
 signer="${APKSIGNER:-$sdk/build-tools/36.0.0/apksigner}"
 key="${SIGNING_KEYSTORE:-${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore}"
 pass="${SIGNING_PASSWORD:-android}"
-apk="app/build/outputs/apk/release/dooplex-movies.apk"
+apk="app/build/outputs/apk/release/dooplex.apk"
 "$signer" sign --ks "$key" --ks-pass "pass:$pass" --key-pass "pass:$pass" \
   --out "$apk" app/build/outputs/apk/release/app-release-unsigned.apk
 "$signer" verify "$apk"
@@ -36,7 +36,7 @@ status=$(curl --silent --show-error \
   --connect-timeout 10 --max-time 180 \
   --header 'Expect:' \
   --header 'X-Requested-With: XMLHttpRequest' \
-  --form 'file=@app/build/outputs/apk/release/dooplex-movies.apk;type=application/vnd.android.package-archive' \
+  --form 'file=@app/build/outputs/apk/release/dooplex.apk;type=application/vnd.android.package-archive' \
   --output "$response" --write-out '%{http_code}' \
   "${target%/}/?fallback=1")
 if [[ "$status" != 200 ]] && ! grep -q 'next chunk does not start with boundary' "$response"; then
