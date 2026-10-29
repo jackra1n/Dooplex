@@ -1,5 +1,6 @@
 package com.jackra1n.dooplex.plex
 
+import com.jackra1n.dooplex.BuildConfig
 import com.jackra1n.dooplex.playback.PlaybackMedia
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -26,7 +27,7 @@ class PlexClient(private val connection: PlexConnection) {
         identity = linkedMapOf(
             "X-Plex-Client-Identifier" to connection.clientId,
             "X-Plex-Product" to "Dooplex",
-            "X-Plex-Version" to "1.0",
+            "X-Plex-Version" to BuildConfig.VERSION_NAME,
             "X-Plex-Platform" to "Android",
             "X-Plex-Device" to "Zidoo",
             "X-Plex-Device-Name" to "Dooplex on Zidoo",

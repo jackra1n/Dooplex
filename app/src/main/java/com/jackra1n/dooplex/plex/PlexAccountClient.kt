@@ -237,7 +237,7 @@ class PlexAccountClient(private val clientId: String) {
                 client.setRequestProperty("Accept", accept)
                 client.setRequestProperty("X-Plex-Client-Identifier", clientId)
                 client.setRequestProperty("X-Plex-Product", "Dooplex")
-                client.setRequestProperty("X-Plex-Version", "1.0")
+                client.setRequestProperty("X-Plex-Version", BuildConfig.VERSION_NAME)
                 client.setRequestProperty("X-Plex-Platform", "Android")
                 client.setRequestProperty("X-Plex-Device", "Zidoo")
                 client.setRequestProperty("X-Plex-Device-Name", "Dooplex on Zidoo")
