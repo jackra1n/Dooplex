@@ -25,6 +25,12 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   row rests (just under the header), on one critically damped spring (stiffness 170). A new key
   retargets the running motion and keeps its speed, so a held D-pad glides instead of stepping. It
   also handles the header and the end of the list.
+  A glide starts at the saved speed only when it replaces one still running; a jump, or a glide
+  that ended or was cancelled by another scroll, leaves none. The speed used to survive those, and
+  a second key arriving before the next glide had started then launched it at the old speed:
+  upwards at the top of the grid, where the edge check stops it at once. Seen once in 30 fast
+  bursts on the emulator (2026-11-13): focus moved to the right card and the grid did not scroll.
+  The cause is read from the code, not reproduced.
 - **While the scroller drives, bring-into-view is off** (`directionalFocus` makes the grid's spec
   return 0), so the focus system does not start a second scroll that fights the first.
 - **Posters' own Up and Down are handled in `onPreviewKeyEvent`**, moving focus by one row

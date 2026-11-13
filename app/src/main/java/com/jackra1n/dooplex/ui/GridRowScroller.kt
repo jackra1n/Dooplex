@@ -49,11 +49,14 @@ internal class GridRowScroller(private val grid: LazyGridState, private val scop
 
     private fun jump(block: suspend () -> Unit) {
         motion?.cancel()
+        velocity = 0f
         motion = scope.launch { block() }
     }
 
     private fun glide(distance: Float) {
-        val start = if (motion?.isActive == true) velocity else 0f
+        // A glide that ended, or that another scroll cancelled, leaves no speed to carry on from.
+        if (motion?.isActive != true) velocity = 0f
+        val start = velocity
         motion?.cancel()
         if (abs(distance) < 0.5f && start == 0f) return
         motion = scope.launch {
@@ -68,7 +71,6 @@ internal class GridRowScroller(private val grid: LazyGridState, private val scop
                     if (abs(consumed - wanted) > 0.5f) cancelAnimation()
                 }
             }
-            velocity = 0f
         }
     }
 }
