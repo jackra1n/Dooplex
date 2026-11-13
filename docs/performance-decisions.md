@@ -124,8 +124,26 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 - Rounded clipping of poster cards, their border and panel background.
 - The poster title and subtitle text. (Text was about 40% of a screen's first build, 731 → 412 ms
   over budget across 8 switches.)
-- The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`).
+- The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`), while the
+  hero stood still. A swap was never part of that test; the mask is now drawn into the bitmap
+  (next section).
 - The background wash itself.
+
+## The hero's shading is part of its bitmap
+
+**Decision (2026-11-13, from reading the code; not yet measured on the box):** `heroPicture`
+(`HomeScreen.kt`) draws the side shading and the bottom fade into a copy of the hero's art once,
+off the main thread, before the title changes. `HeroArt` then cross-fades plain bitmaps by drawing
+each with an alpha.
+
+**Why:** the shading used to be drawn over the art in an offscreen layer, inside a `Crossfade`
+that puts each picture in an alpha layer of its own. Standing still that is one cached full-screen
+texture, which is why it measured as free. During the 500 ms swap it was two new full-screen
+layers, each composited through a second one, every frame. Compare the `hero:swap` slow frames
+before and after.
+
+**Cost:** one more 1280 × 720 bitmap (3.7 MB) per hero on screen, next to the unshaded one in the
+poster cache that the details page also uses.
 
 ## The focus glow is gradients, not blur
 
