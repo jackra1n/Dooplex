@@ -54,7 +54,8 @@ Pitfalls:
   after `mise run upload` measures the JIT state, which may differ from an install that sat
   overnight. The `session` event reports `odexBytes` (compiled code on disk) and
   `compiledProfileBytes` (0 until dexopt has used a profile); compare runs only when they match.
-  Not yet measured on the box (added 2026-11-13).
+  On the Android 11 emulator a fresh install has an 82 KB odex for 3 MB of dex, so nothing is
+  compiled (2026-11-13). Not yet read on the box.
 - A shell loop over option strings needs `${=a}` in zsh, or every run gets one bad argument.
 - The bench waits for the app's next 4 s analytics upload to see each command; that is expected.
 
