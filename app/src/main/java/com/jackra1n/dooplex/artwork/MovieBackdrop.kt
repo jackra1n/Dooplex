@@ -196,21 +196,19 @@ private fun DrawScope.drawWash(colors: MovieAtmosphere) {
 }
 
 /**
- * Samples only 18×27 pixels off-main once per repository bitmap. Hue buckets preserve
- * distinct saturated regions instead of averaging complementary colors into a gray wash.
+ * Samples only 18×27 pixels, once per repository bitmap, on the thread that decoded it. Hue
+ * buckets preserve distinct saturated regions instead of averaging complementary colors into gray.
  * Region-weighted selection favors the poster's layout, with separated hues where available.
  * Selected hues blend toward luminance gray so artwork stays the focus, not the background.
  * Brightness is capped before compositing; dim artwork is never amplified.
  */
-internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = withContext(Dispatchers.Default) {
+internal fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere {
     val hueBuckets = 12
     val neutralBucket = hueBuckets
     // Each bucket stores weighted RGB, total weight and three spatial-region weights.
     val stride = 7
     val sums = FloatArray((hueBuckets + 1) * stride)
-    val context = currentCoroutineContext()
     for (row in 0 until 27) {
-        context.ensureActive()
         val y = ((row + 0.5f) * bitmap.height / 27).toInt().coerceAtMost(bitmap.height - 1)
         for (column in 0 until 18) {
             val x = ((column + 0.5f) * bitmap.width / 18).toInt().coerceAtMost(bitmap.width - 1)
@@ -298,6 +296,5 @@ internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = w
             neutralBucket
         }
     }
-    context.ensureActive()
-    MovieAtmosphere(color(selected[0]), color(selected[1]), color(selected[2]))
+    return MovieAtmosphere(color(selected[0]), color(selected[1]), color(selected[2]))
 }

@@ -186,8 +186,8 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         disk.write(name, image, context)
     }
 
-    private suspend fun publish(key: Key, decoded: Bitmap): Bitmap {
-        // Sampling finishes off-main before publication, so a displayed poster's palette
+    private fun publish(key: Key, decoded: Bitmap): Bitmap {
+        // Sampling finishes here, before publication, so a displayed poster's palette
         // is already available to synchronous focus updates without another request.
         val atmosphere = extractMovieAtmosphere(decoded)
         val bitmap = toGpu(decoded)
