@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyLayoutScrollScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -173,7 +174,8 @@ internal fun CollectionScreen(
     onPlay: (PlexBrowseItem, Boolean) -> Unit,
     onOpenShow: (PlexBrowseItem) -> Unit,
 ) {
-    val grid = rememberLazyGridState()
+    // Rows half a screen ahead are built in idle time, and rows just left are kept for the way back.
+    val grid = rememberLazyGridState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.5f) })
     val scroller = rememberGridRowScroller(grid)
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }

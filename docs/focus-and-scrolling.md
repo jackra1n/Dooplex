@@ -89,3 +89,8 @@ leftover developer screen and is gone. Switching servers and signing out live in
 `rememberLazyListState(cacheWindow = LazyLayoutCacheWindow(…))` composes rows ahead in idle time:
 one screen ahead and half behind on the Home page, half a screen ahead in each shelf. Without it,
 the first Down into a new shelf composed the whole shelf inside the frame.
+
+The library grids use the same window, half a screen ahead and half behind (2026-11-13, not yet
+measured; they had the default one-row prefetch, which starts only once a scroll is under way and
+drops a row the moment it leaves). Cached rows are composed but not placed, so they are missing
+from `visibleItemsInfo`; keep checking that before focusing a card or the header.
