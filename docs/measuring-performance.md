@@ -49,6 +49,12 @@ Pitfalls:
   against a cold experiment measures the cache, not the change.
 - Single runs swing a lot (the same build gave 0.9% and 0.0%). To compare two builds, build both
   APKs and install them in turn, A, B, A, B, running the same pattern after each install.
+- A fresh install has no compiled code: Android runs it interpreted and JIT-compiled until its
+  idle-time dexopt compiles it from a profile, and every reinstall starts over. So a benchmark right
+  after `mise run upload` measures the JIT state, which may differ from an install that sat
+  overnight. The `session` event reports `odexBytes` (compiled code on disk) and
+  `compiledProfileBytes` (0 until dexopt has used a profile); compare runs only when they match.
+  Not yet measured on the box (added 2026-11-13).
 - A shell loop over option strings needs `${=a}` in zsh, or every run gets one bad argument.
 - The bench waits for the app's next 4 s analytics upload to see each command; that is expected.
 
