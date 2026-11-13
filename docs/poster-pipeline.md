@@ -16,6 +16,11 @@ with `rememberMovieArtworkPainter` (`MovieArtwork.kt`).
 - **Keep-alive HTTP.** A fully read response returns its connection to the pool; only failures
   disconnect.
 - **Decoding is one at a time** (`decodeSlot`), off the main thread, with size and pixel limits.
+- **Workers give way to the UI.** They run on four threads of their own, one step above
+  background priority (as Glide's do), not on `Dispatchers.IO` at normal priority, and the colour
+  extraction runs on the same thread instead of hopping to `Dispatchers.Default`. Added 2026-11-13
+  and not yet measured: A/B it with `--pattern movie --cold memory` and watch `poster.wait.ms`,
+  since lower priority can also make posters arrive later.
 - **Lookahead.** Grids warm the rows ahead of the scroll direction one image at a time, and only
   when no visible request is waiting (`awaitIdle`).
 

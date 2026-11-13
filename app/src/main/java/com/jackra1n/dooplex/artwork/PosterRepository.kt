@@ -3,6 +3,7 @@ package com.jackra1n.dooplex.artwork
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Process
 import com.jackra1n.dooplex.diagnostics.Analytics
 import com.jackra1n.dooplex.plex.PlexClient
 import com.jackra1n.dooplex.plex.PlexConnection
@@ -18,13 +19,14 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.concurrent.Executors
 import kotlin.coroutines.CoroutineContext
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
@@ -42,7 +44,15 @@ import kotlinx.coroutines.sync.withPermit
 class PosterRepository(context: Context, private val connection: PlexConnection) : Closeable {
     private val client = PlexClient(connection)
     private val disk = PosterDiskCache.shared(File(context.applicationContext.cacheDir, "posters-v1"))
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Downloads and decodes run just above background priority, as Glide's do, so they give way
+    // to the main and render threads while a list scrolls.
+    private val threads = Executors.newFixedThreadPool(WORKERS) { task ->
+        Thread({
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND + Process.THREAD_PRIORITY_MORE_FAVORABLE)
+            task.run()
+        }, "posters")
+    }.asCoroutineDispatcher()
+    private val scope = CoroutineScope(SupervisorJob() + threads)
     private val lock = Any()
     private val memory = LinkedHashMap<Key, MemoryEntry>(64, 0.75f, true)
     private val requests = HashMap<Key, Request>()
@@ -133,6 +143,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
         wake.close()
         // Bitmaps are never recycled on eviction/close because a composed painter may still hold them.
         scope.cancel()
+        threads.close()
     }
 
     private suspend fun work() {
