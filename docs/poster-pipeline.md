@@ -39,7 +39,7 @@ Posters cached on disk at the old size are downloaded once more and age out of t
 | Cache | Limit | Notes |
 | --- | --- | --- |
 | Memory | 96 MiB of decoded bitmaps | LRU. Bitmaps are never recycled on eviction, because a card may still draw one. |
-| Disk | 256 MiB, 8,192 files, 8 MiB per image | `cacheDir/posters-v1`. One directory scan builds an in-memory LRU index, shared by every repository in the process; reads and writes then touch only their own file. Writes go to a temporary file and are renamed into place. |
+| Disk | 256 MiB, 8,192 files, 8 MiB per image | `cacheDir/posters-v1`. One directory scan builds an in-memory LRU index, shared by every repository in the process and started when the first repository is created, so it overlaps the Home request instead of holding up the first posters; reads and writes then touch only their own file. Writes go to a temporary file and are renamed into place. |
 
 Disk names are SHA-256 hashes that include the server and account, so the token never appears in a
 file name and two accounts never share artwork.

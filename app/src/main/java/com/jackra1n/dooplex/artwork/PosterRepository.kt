@@ -73,6 +73,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
     }
 
     init {
+        scope.launch { disk.prepare() }
         repeat(WORKERS) { scope.launch { work() } }
     }
 
@@ -350,7 +351,7 @@ class PosterRepository(context: Context, private val connection: PlexConnection)
 }
 
 /**
- * Process-wide LRU index over the poster files, built by one directory scan on first use.
+ * Process-wide LRU index over the poster files, built by one directory scan.
  * Reads and writes then touch only their own file instead of rescanning the directory.
  */
 private class PosterDiskCache(private val root: File) {
@@ -359,6 +360,11 @@ private class PosterDiskCache(private val root: File) {
     private var bytes = 0L
     private var ready = false
     private var available = false
+
+    /** Scans ahead of the first poster, which would otherwise hold every worker up behind the scan. */
+    fun prepare() {
+        synchronized(lock) { open() }
+    }
 
     fun read(name: String, context: CoroutineContext): ImageBytes? {
         val length = synchronized(lock) {
