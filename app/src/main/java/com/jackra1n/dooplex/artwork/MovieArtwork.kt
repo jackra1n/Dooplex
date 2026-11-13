@@ -55,10 +55,11 @@ internal fun rememberMovieArtworkPainter(
     height: Int,
     active: Boolean,
 ): Painter? {
-    val cached = remember(posters, path, width, height) { path?.let { posters.cached(it, width, height) } }
-    var bitmap by remember(posters, path, width, height) { mutableStateOf<Bitmap?>(cached) }
-    LaunchedEffect(posters, path, width, height, active) {
-        if (path == null) return@LaunchedEffect
+    var bitmap by remember(posters, path, width, height) {
+        mutableStateOf<Bitmap?>(path?.let { posters.cached(it, width, height) })
+    }
+    // A memory hit starts no coroutine: a screen of cards is built in one frame.
+    if (path != null && bitmap == null) LaunchedEffect(posters, path, width, height, active) {
         posters.cached(path, width, height)?.let { bitmap = it }
         if (!active || bitmap != null) return@LaunchedEffect
         try {
@@ -106,8 +107,9 @@ private val PlaceholderBrush = Brush.verticalGradient(listOf(CinemaColors.Panel,
 /** Artwork that arrives after its card appeared fades in; cache hits start fully shown. */
 @Composable
 internal fun rememberArtworkReveal(path: String?, width: Int, ready: Boolean): Animatable<Float, AnimationVector1D> {
-    val reveal = remember(path, width) { Animatable(if (ready) 1f else 0f) }
-    LaunchedEffect(reveal, ready) { if (ready) reveal.animateTo(1f, tween(220)) }
+    val late = remember(path, width) { !ready }
+    val reveal = remember(path, width) { Animatable(if (late) 0f else 1f) }
+    if (late && ready) LaunchedEffect(reveal) { reveal.animateTo(1f, tween(220)) }
     return reveal
 }
 

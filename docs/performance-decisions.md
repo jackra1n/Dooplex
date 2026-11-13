@@ -71,6 +71,9 @@ Changes of 2026-11-13, from reading the code; none is measured on the box yet, s
   so buttons were composed with the grid. `CollectionScreen` now mounts it two frames after the
   page dip has faded in, or at once when it is needed (`railMounted`); focus requests for a rail
   that is not there yet go through `railRestorePending`.
+- **A poster already in memory starts no coroutine.** Every card used to launch one to load its
+  artwork and one for the reveal, and the reveal ran its 220 ms animation from 1 to 1 on every
+  frame. Both effects in `MovieArtwork.kt` are now composed only for artwork that is not there yet.
 
 ## Page changes dip instead of cutting
 
