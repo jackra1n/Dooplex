@@ -29,6 +29,9 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   return 0), so the focus system does not start a second scroll that fights the first.
 - **Posters' own Up and Down are handled in `onPreviewKeyEvent`**, moving focus by one row
   (`movePosterFocus`), instead of Compose's geometric focus search.
+  A target card already on screen takes focus inside the key press (2026-11-13); before, every
+  press waited a frame for the restore effect, which still runs afterwards to settle the state and
+  is the only path for a card that is not laid out yet.
 
 ## Tabs and the top bar
 

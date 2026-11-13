@@ -250,6 +250,11 @@ internal fun CollectionScreen(
         restoreToHeader = false
         restoreEpoch++
         if (index / scroller.columns != from / scroller.columns) scroller.showCard(index)
+        // A card already on screen takes focus with the key press; the restore effect, a frame
+        // later, then only settles the state above.
+        if (grid.layoutInfo.visibleItemsInfo.any { it.index == index + COLLECTION_GRID_HEADER_ITEMS }) {
+            requesters[index]?.requestFocus()
+        }
     }
 
     fun closeSort() {
