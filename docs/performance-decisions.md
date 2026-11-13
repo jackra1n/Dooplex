@@ -62,6 +62,16 @@ Simpler variants failed: not placing a hidden screen releases its layers, so sho
 re-records every card (33–64 ms, no better than rebuilding); alpha 0 in place lets focus search pick
 the hidden screen's cards.
 
+## The rebuild frame carries only what the first frame shows
+
+Changes of 2026-11-13, from reading the code; none is measured on the box yet, so A/B each
+(`--pattern switch` and `--pattern movie`) before building on it:
+
+- **The alphabet rail waits.** It is invisible until focus reaches the right edge, yet its 27 or
+  so buttons were composed with the grid. `CollectionScreen` now mounts it two frames after the
+  page dip has faded in, or at once when it is needed (`railMounted`); focus requests for a rail
+  that is not there yet go through `railRestorePending`.
+
 ## Page changes dip instead of cutting
 
 **Decision (2026-10-27):** every page change runs through `PageDip`: the page fades out in 70 ms,

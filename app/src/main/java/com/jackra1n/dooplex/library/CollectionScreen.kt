@@ -207,6 +207,7 @@ internal fun CollectionScreen(
     var awaitingJump by remember { mutableStateOf(false) }
     var returnAfterJump by remember { mutableStateOf(false) }
     var railRestorePending by remember { mutableStateOf(false) }
+    var railMounted by remember { mutableStateOf(false) }
     var lastRailKey by rememberSaveable(state.library.key) { mutableStateOf<String?>(null) }
     val railStatusFocus = remember { FocusRequester() }
     val alphabet = remember(state.alphabet) { state.alphabet.filter { it.count > 0 } }
@@ -339,8 +340,8 @@ internal fun CollectionScreen(
         }
         wasIdle = !interactive
     }
-    LaunchedEffect(railRestorePending, alphabet, state.alphabetLoading, state.alphabetError, interactive, modalOpen) {
-        if (!railRestorePending || !interactive || modalOpen) return@LaunchedEffect
+    LaunchedEffect(railRestorePending, railMounted, alphabet, state.alphabetLoading, state.alphabetError, interactive, modalOpen) {
+        if (!railRestorePending || !railMounted || !interactive || modalOpen) return@LaunchedEffect
         withFrameNanos { }
         val key = lastRailKey?.takeIf { it in railRequesters } ?: alphabet.firstOrNull()?.key
         val requester = if (state.alphabetError != null) railStatusFocus else railRequesters[key] ?: railStatusFocus
@@ -449,6 +450,13 @@ internal fun CollectionScreen(
             }
         }
         val railOpacity = animateFloatAsState(if (showAlphabet) 1f else 0f, tween(150), label = "alphabet reveal")
+        // The hidden rail is some 27 buttons, so it is built once the page has faded in (or the
+        // moment it is needed) instead of in the frame that builds the grid.
+        LaunchedEffect(Unit) {
+            snapshotFlow { showAlphabet || dip.alpha == 1f && grid.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+            if (!showAlphabet) repeat(2) { withFrameNanos { } }
+            railMounted = true
+        }
 
         fun enterAlphabet() {
             lastRailKey = lastRailKey?.takeIf { it in railRequesters }
@@ -457,7 +465,7 @@ internal fun CollectionScreen(
             needsFocus = false
             pendingFocusIndex = null
             restoreEpoch++
-            if (showAlphabet) {
+            if (showAlphabet && railMounted) {
                 val target = if (state.alphabetError != null) railStatusFocus
                     else railRequesters[lastRailKey] ?: railStatusFocus
                 target.requestFocus()
@@ -681,7 +689,7 @@ internal fun CollectionScreen(
                     }
                 }
             }
-            CollectionAlphabetRail(
+            if (!railMounted) Spacer(Modifier.width(railWidth)) else CollectionAlphabetRail(
                 letters = alphabet,
                 noun = state.noun,
                 loading = state.alphabetLoading,
