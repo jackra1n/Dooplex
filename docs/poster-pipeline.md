@@ -22,8 +22,12 @@ with `rememberMovieArtworkPainter` (`MovieArtwork.kt`).
 ## Sizes
 
 Artwork is requested from Plex's photo transcoder at the size it is drawn, rounded up to a bucket
-(`artworkBucket`: 192, 256, 384 or 512 px wide). On the box, Home's shelves (7 cards across) use
-256 × 384 px, about 393 KB decoded; the 6-column library grids use 384 × 576 px, about 885 KB.
+(`artworkBucket`: 192, 256, 288, 384 or 512 px wide). On the box, Home's shelves (7 cards across)
+use 256 × 384 px, about 393 KB decoded; the 6-column library grids use 288 × 432 px, about 486 KB.
+
+The 288 bucket exists for those grids (2026-11-13): their cards are 267 px wide, 288 px when
+focused (× 1.08), and used to round up to 384 × 576 px, about 885 KB each for pixels never shown.
+Posters cached on disk at the old size are downloaded once more and age out of the disk cache.
 
 ## Caches
 

@@ -37,6 +37,7 @@ import kotlinx.coroutines.CancellationException
 internal fun artworkBucket(pixels: Float): Int = when {
     pixels <= 192 -> 192
     pixels <= 256 -> 256
+    pixels <= 288 -> 288
     pixels <= 384 -> 384
     else -> 512
 }
