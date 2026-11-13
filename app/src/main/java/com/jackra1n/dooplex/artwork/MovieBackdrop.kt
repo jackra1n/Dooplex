@@ -98,8 +98,12 @@ internal fun MovieBackdrop(
             current = next
             return@LaunchedEffect
         }
-        val blended = previous.blend(current, fade.value)
-        val (under, over) = withContext(Dispatchers.Default) { washImage(blended, screen) to washImage(next, screen) }
+        // Only an interrupted fade needs its halfway wash drawn; a finished one is the current image.
+        val settled = currentImage.takeIf { fade.value == 1f }
+        val blended = if (settled != null) current else previous.blend(current, fade.value)
+        val (under, over) = withContext(Dispatchers.Default) {
+            (settled ?: renderWash(blended, screen)) to washImage(next, screen)
+        }
         previous = blended
         current = next
         previousImage = under
@@ -129,11 +133,21 @@ private fun WashImage(image: ImageBitmap, modifier: Modifier) {
 /**
  * The wash is soft enough to render at 1/8 size and stretch, so each frame the GPU fills one texture
  * instead of the screen gradient plus four colour pools. Rendering happens off the main thread, and
- * recently shown washes are kept so revisiting a poster costs nothing.
+ * recently shown washes are kept so revisiting a poster costs nothing. Halfway blends are one-offs
+ * and stay out of the cache.
  */
 private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
     val key = colors to screen
     synchronized(washCache) { washCache[key] }?.let { return it }
+    val image = renderWash(colors, screen)
+    synchronized(washCache) {
+        washCache[key] = image
+        if (washCache.size > WASH_CACHE) washCache.remove(washCache.keys.first())
+    }
+    return image
+}
+
+private fun renderWash(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
     val image = ImageBitmap(
         (screen.width / WASH_SCALE).toInt().coerceAtLeast(1),
         (screen.height / WASH_SCALE).toInt().coerceAtLeast(1),
@@ -144,10 +158,6 @@ private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
         }
     }
     image.prepareToDraw()
-    synchronized(washCache) {
-        washCache[key] = image
-        if (washCache.size > WASH_CACHE) washCache.remove(washCache.keys.first())
-    }
     return image
 }
 

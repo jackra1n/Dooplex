@@ -104,6 +104,12 @@ caches the last 24, and stretches the bitmap. Before, the wash was drawn on the 
 change: 461 renders averaging about 4.4 ms in one session, and a 60–100 ms hitch every time the Home
 hero changed. It now costs 5–8 ms, off the main thread.
 
+A change draws one wash, not two (2026-11-13, not yet measured). The image under the fade used to
+be rendered again as a "blend" even when no fade was running: the same picture as the current
+wash, but its colours came back from `lerp` slightly different, so it missed the cache and then
+filled a slot nobody would ask for again. Now only a fade interrupted halfway draws its blend,
+and blends are not cached, so all 24 slots hold washes that can be revisited.
+
 ## The start screen hides the first layout
 
 `MainActivity` keeps `StartScreen` over everything until Home reports ready: rows loaded, the hero
