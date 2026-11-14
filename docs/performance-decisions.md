@@ -64,8 +64,10 @@ the hidden screen's cards.
 
 ## The rebuild frame carries only what the first frame shows
 
-Changes of 2026-11-13, from reading the code; none is measured on the box yet, so A/B each
-(`--pattern switch` and `--pattern movie`) before building on it:
+Changes of 2026-11-13, from reading the code. None is measured on its own. With the whole branch
+the tab switches dropped as many frames as before, within the run-to-run swing, and the worst
+rebuild frames went from 95–136 ms to 64–98 ms (2026-11-14,
+[measuring-performance.md](measuring-performance.md)):
 
 - **The alphabet rail waits.** It is invisible until focus reaches the right edge, yet its 27 or
   so buttons were composed with the grid. `CollectionScreen` now mounts it two frames after the
@@ -104,7 +106,7 @@ caches the last 24, and stretches the bitmap. Before, the wash was drawn on the 
 change: 461 renders averaging about 4.4 ms in one session, and a 60–100 ms hitch every time the Home
 hero changed. It now costs 5–8 ms, off the main thread.
 
-A change draws one wash, not two (2026-11-13, not yet measured). The image under the fade used to
+A change draws one wash, not two (2026-11-13, not measured on its own). The image under the fade used to
 be rendered again as a "blend" even when no fade was running: the same picture as the current
 wash, but its colours came back from `lerp` slightly different, so it missed the cache and then
 filled a slot nobody would ask for again. Now only a fade interrupted halfway draws its blend,
@@ -131,7 +133,7 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 
 ## The hero's shading is part of its bitmap
 
-**Decision (2026-11-13, from reading the code; not yet measured on the box):** `heroPicture`
+**Decision (2026-11-13, from reading the code; not measured on its own):** `heroPicture`
 (`HomeScreen.kt`) draws the side shading and the bottom fade into a copy of the hero's art once,
 off the main thread, before the title changes. `HeroArt` then cross-fades plain bitmaps by drawing
 each with an alpha.

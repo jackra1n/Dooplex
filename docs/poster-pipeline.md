@@ -18,9 +18,10 @@ with `rememberMovieArtworkPainter` (`MovieArtwork.kt`).
 - **Decoding is one at a time** (`decodeSlot`), off the main thread, with size and pixel limits.
 - **Workers give way to the UI.** They run on four threads of their own, one step above
   background priority (as Glide's do), not on `Dispatchers.IO` at normal priority, and the colour
-  extraction runs on the same thread instead of hopping to `Dispatchers.Default`. Added 2026-11-13
-  and not yet measured: A/B it with `--pattern movie --cold memory` and watch `poster.wait.ms`,
-  since lower priority can also make posters arrive later.
+  extraction runs on the same thread instead of hopping to `Dispatchers.Default`. Added 2026-11-13.
+  Lower priority could make posters arrive later, but on the box it did not: from cold memory a
+  poster waited 14–17 ms on the branch and 16–20 ms on main (2026-11-14, whole branch against
+  main, see [measuring-performance.md](measuring-performance.md)).
 - **Lookahead.** Grids warm the rows ahead of the scroll direction one image at a time, and only
   when no visible request is waiting (`awaitIdle`).
 
@@ -33,6 +34,8 @@ use 256 × 384 px, about 393 KB decoded; the 6-column library grids use 288 × 4
 The 288 bucket exists for those grids (2026-11-13): their cards are 267 px wide, 288 px when
 focused (× 1.08), and used to round up to 384 × 576 px, about 885 KB each for pixels never shown.
 Posters cached on disk at the old size are downloaded once more and age out of the disk cache.
+At 288 px the 150 posters of a benchmark pass fit in the 96 MiB of decoded posters, so a warm
+run of three passes waits for none; at 384 px it waited for 103–124 (2026-11-14).
 
 ## Caches
 
