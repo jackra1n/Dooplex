@@ -25,6 +25,7 @@ internal class GridRowScroller(private val grid: LazyGridState, private val scop
     private var motion: Job? = null
     private var velocity = 0f
     private var headerHeight = 0
+    val moving: Boolean get() = motion?.isActive == true
 
     fun showCard(index: Int) {
         val layout = grid.layoutInfo

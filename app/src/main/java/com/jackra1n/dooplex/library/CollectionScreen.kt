@@ -193,7 +193,7 @@ internal fun CollectionScreen(
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
                 // A directional reveal owns the animation; focus must not start a competing scroll.
-                if (directionalFocus || focus.navigationType != null) 0f
+                if (directionalFocus || scroller.moving || focus.navigationType != null) 0f
                 else super.calculateScrollDistance(offset, size, containerSize)
         }
     }

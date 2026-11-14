@@ -31,8 +31,13 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   upwards at the top of the grid, where the edge check stops it at once. Seen once in 30 fast
   bursts on the emulator (2026-11-13): focus moved to the right card and the grid did not scroll.
   The cause is read from the code, not reproduced.
-- **While the scroller drives, bring-into-view is off** (`directionalFocus` makes the grid's spec
-  return 0), so the focus system does not start a second scroll that fights the first.
+- **While the scroller drives, bring-into-view is off** (`directionalFocus` or a running glide
+  makes the grid's spec return 0), so the focus system does not start a second scroll that fights
+  the first. `directionalFocus` alone was not enough: the restore effect clears it right after
+  requesting focus, and the bring-into-view that focus change causes is worked out later. It then
+  cancelled the glide and moved the grid only far enough to show the row. Measured on the box
+  (2026-11-14): a single Down asked for 513 px and the glide got 10 to 170 px in 2 to 4 frames; a
+  held burst lost its last glide the same way. Now each glide runs its full 513 px in 44 frames.
 - **Posters' own Up and Down are handled in `onPreviewKeyEvent`**, moving focus by one row
   (`movePosterFocus`), instead of Compose's geometric focus search.
   A target card already on screen takes focus inside the key press (2026-11-13); before, every
