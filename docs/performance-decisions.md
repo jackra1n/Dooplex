@@ -62,6 +62,26 @@ Simpler variants failed: not placing a hidden screen releases its layers, so sho
 re-records every card (33–64 ms, no better than rebuilding); alpha 0 in place lets focus search pick
 the hidden screen's cards.
 
+## The rebuild frame carries only what the first frame shows
+
+Changes of 2026-11-13, from reading the code. None is measured on its own. With the whole branch
+the tab switches dropped as many frames as before, within the run-to-run swing, and the worst
+rebuild frames went from 95–136 ms to 64–98 ms (2026-11-14,
+[measuring-performance.md](measuring-performance.md)):
+
+- **The alphabet rail waits.** It is invisible until focus reaches the right edge, yet its 27 or
+  so buttons were composed with the grid. `CollectionScreen` now mounts it two frames after the
+  page dip has faded in, or at once when it is needed (`railMounted`); focus requests for a rail
+  that is not there yet go through `railRestorePending`.
+- **A poster already in memory starts no coroutine.** Every card used to launch one to load its
+  artwork and one for the reveal, and the reveal ran its 220 ms animation from 1 to 1 on every
+  frame. Both effects in `MovieArtwork.kt` are now composed only for artwork that is not there yet.
+- **Focus recomposes no card.** `FocusLight` holds the focus state and its two animations, started
+  from `onFocusChanged`; the scale, glow and sheen read them while drawing, the z-order while
+  placing (`focusRaise`) and the title colour through a `ColorProducer`. Before, each card ran two
+  `animateFloatAsState` coroutines from its first composition, and every focus move recomposed
+  the card it left and the card it reached.
+
 ## Page changes dip instead of cutting
 
 **Decision (2026-10-27):** every page change runs through `PageDip`: the page fades out in 70 ms,
@@ -86,6 +106,12 @@ caches the last 24, and stretches the bitmap. Before, the wash was drawn on the 
 change: 461 renders averaging about 4.4 ms in one session, and a 60–100 ms hitch every time the Home
 hero changed. It now costs 5–8 ms, off the main thread.
 
+A change draws one wash, not two (2026-11-13, not measured on its own). The image under the fade used to
+be rendered again as a "blend" even when no fade was running: the same picture as the current
+wash, but its colours came back from `lerp` slightly different, so it missed the cache and then
+filled a slot nobody would ask for again. Now only a fade interrupted halfway draws its blend,
+and blends are not cached, so all 24 slots hold washes that can be revisited.
+
 ## The start screen hides the first layout
 
 `MainActivity` keeps `StartScreen` over everything until Home reports ready: rows loaded, the hero
@@ -100,8 +126,26 @@ A/B tested on 2026-10-26 with experiment flags, then the flags were removed:
 - Rounded clipping of poster cards, their border and panel background.
 - The poster title and subtitle text. (Text was about 40% of a screen's first build, 731 → 412 ms
   over budget across 8 switches.)
-- The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`).
+- The hero image's offscreen fade mask (`CompositingStrategy.Offscreen` with `DstIn`), while the
+  hero stood still. A swap was never part of that test; the mask is now drawn into the bitmap
+  (next section).
 - The background wash itself.
+
+## The hero's shading is part of its bitmap
+
+**Decision (2026-11-13, from reading the code; not measured on its own):** `heroPicture`
+(`HomeScreen.kt`) draws the side shading and the bottom fade into a copy of the hero's art once,
+off the main thread, before the title changes. `HeroArt` then cross-fades plain bitmaps by drawing
+each with an alpha.
+
+**Why:** the shading used to be drawn over the art in an offscreen layer, inside a `Crossfade`
+that puts each picture in an alpha layer of its own. Standing still that is one cached full-screen
+texture, which is why it measured as free. During the 500 ms swap it was two new full-screen
+layers, each composited through a second one, every frame. Compare the `hero:swap` slow frames
+before and after.
+
+**Cost:** one more 1280 × 720 bitmap (3.7 MB) per hero on screen, next to the unshaded one in the
+poster cache that the details page also uses.
 
 ## The focus glow is gradients, not blur
 

@@ -1,7 +1,8 @@
 package com.jackra1n.dooplex.home
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -34,6 +35,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,15 +46,19 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -66,6 +72,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jackra1n.dooplex.artwork.MovieBackdrop
@@ -89,11 +99,13 @@ import com.jackra1n.dooplex.ui.Text
 import com.jackra1n.dooplex.ui.theme.CinemaColors
 import com.jackra1n.dooplex.ui.pageFade
 import java.io.IOException
-import kotlinx.coroutines.CancellationException
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val HERO_SECONDS = 8L
@@ -127,6 +139,7 @@ internal fun HomeScreen(
     var focusedCard by remember { mutableStateOf<PlexBrowseItem?>(null) }
     var heroIndex by rememberSaveable { mutableIntStateOf(0) }
     var shown by remember { mutableStateOf<PlexBrowseItem?>(null) }
+    var shownArt by remember { mutableStateOf<ImageBitmap?>(null) }
     val heroes = state.heroes
     val hero = heroes.getOrNull(heroIndex.mod(heroes.size.coerceAtLeast(1)))
     val selected = state.selectedMovie
@@ -142,23 +155,6 @@ internal fun HomeScreen(
         }
     }
 
-    // A title changes only once its art and logo are ready, so text and picture swap together.
-    LaunchedEffect(hero?.ratingKey) {
-        val next = hero ?: return@LaunchedEffect
-        val details = state.heroDetails(next)
-        listOfNotNull(details.artPath?.let { Triple(it, 1280, 720) }, details.logoPath?.let { Triple(it, 800, 310) })
-            .forEach { (path, width, height) ->
-                try {
-                    posters.load(path, width, height)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: IOException) {
-                    // A missing picture falls back to the title text and the page wash.
-                }
-            }
-        Analytics.mark("hero:swap")
-        shown = details
-    }
     LaunchedEffect(heroIndex, heroes.size, enabled, selected == null) {
         if (!enabled || selected != null || heroes.size < 2) return@LaunchedEffect
         heroes.getOrNull((heroIndex + 1).mod(heroes.size))?.let { state.heroDetails(it) }
@@ -232,6 +228,24 @@ internal fun HomeScreen(
             }
         }
         val rowSpec = rememberEdgeScroll(edge)
+        // A title changes only once its art and logo are ready, so text and picture swap together.
+        LaunchedEffect(hero?.ratingKey) {
+            val next = hero ?: return@LaunchedEffect
+            val details = state.heroDetails(next)
+            // A missing picture falls back to the title text and the page wash.
+            suspend fun load(path: String?, width: Int, height: Int): Bitmap? = try {
+                path?.let { posters.load(it, width, height) }
+            } catch (_: IOException) {
+                null
+            }
+            val art = load(details.artPath, 1280, 720)
+            load(details.logoPath, 800, 310)
+            val shape = constraints.maxWidth.toFloat() / constraints.maxHeight
+            val picture = art?.let { withContext(Dispatchers.Default) { heroPicture(it, shape) } }
+            Analytics.mark("hero:swap")
+            shownArt = picture
+            shown = details
+        }
         // Ready once the hero's picture and the first shelf's posters are in memory, so the start
         // screen can lift onto a finished page instead of one that is still filling in.
         LaunchedEffect(state) {
@@ -259,7 +273,7 @@ internal fun HomeScreen(
             active = enabled,
             modifier = Modifier.fillMaxSize().pageFade(),
         )
-        HeroArt(shown, posters, Modifier.fillMaxSize().pageFade().graphicsLayer {
+        HeroArt(shownArt, Modifier.fillMaxSize().pageFade().graphicsLayer {
             translationY = if (listState.firstVisibleItemIndex == 0) -listState.firstVisibleItemScrollOffset.toFloat() else -heroHeightPx * 2
         })
         CompositionLocalProvider(LocalBringIntoViewSpec provides shelfSpec) {
@@ -350,29 +364,53 @@ internal fun HomeScreen(
     }
 }
 
-/** The hero's picture fades out at the bottom into the page wash, and darkens behind the text. */
+/**
+ * Hero pictures cross-fade as plain bitmaps drawn with an alpha. Their shading is already in the
+ * bitmap ([heroPicture]), so a swap needs no offscreen layer, which this GPU pays for in frames.
+ */
 @Composable
-private fun HeroArt(item: PlexBrowseItem?, posters: PosterRepository, modifier: Modifier) {
-    Crossfade(targetState = item, animationSpec = tween(500), modifier = modifier, label = "hero art") { hero ->
-        val painter = rememberMovieArtworkPainter(hero?.artPath, posters, width = 1280, height = 720, active = true)
-        if (painter != null) Box(
-            Modifier.fillMaxSize()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithCache {
-                    val side = Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.72f), 0.42f to Color.Black.copy(alpha = 0.4f), 0.75f to Color.Transparent,
-                    )
-                    val fade = Brush.verticalGradient(0.5f to Color.Black, 0.98f to Color.Transparent)
-                    onDrawWithContent {
-                        drawContent()
-                        drawRect(side)
-                        drawRect(fade, blendMode = BlendMode.DstIn)
-                    }
-                },
-        ) {
-            Image(painter, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+private fun HeroArt(picture: ImageBitmap?, modifier: Modifier) {
+    val layers = remember { mutableStateListOf<HeroLayer>() }
+    LaunchedEffect(picture) {
+        val entering = picture?.let(::HeroLayer)?.also { layers += it }
+        layers.toList().forEach { layer ->
+            launch {
+                layer.alpha.animateTo(if (layer === entering) 1f else 0f, tween(500))
+                if (layer !== entering) layers -= layer
+            }
         }
     }
+    Box(modifier.drawBehind {
+        val screen = IntSize(size.width.roundToInt(), size.height.roundToInt())
+        layers.forEach { drawImage(it.picture, dstSize = screen, alpha = it.alpha.value) }
+    })
+}
+
+private class HeroLayer(val picture: ImageBitmap) {
+    val alpha = Animatable(0f)
+}
+
+/**
+ * The hero's art with its shading drawn in: darker behind the text, fading out at the bottom into
+ * the page wash. Cut to the screen's shape first, so the shading lands where the screen needs it.
+ */
+private fun heroPicture(art: Bitmap, shape: Float): ImageBitmap {
+    val width = minOf(art.width, (art.height * shape).roundToInt()).coerceAtLeast(1)
+    val height = minOf(art.height, (art.width / shape).roundToInt()).coerceAtLeast(1)
+    val picture = ImageBitmap(width, height)
+    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(picture), Size(width.toFloat(), height.toFloat())) {
+        drawImage(
+            art.asImageBitmap(),
+            srcOffset = IntOffset((art.width - width) / 2, (art.height - height) / 2),
+            srcSize = IntSize(width, height),
+        )
+        drawRect(Brush.horizontalGradient(
+            0f to Color.Black.copy(alpha = 0.72f), 0.42f to Color.Black.copy(alpha = 0.4f), 0.75f to Color.Transparent,
+        ))
+        drawRect(Brush.verticalGradient(0.5f to Color.Black, 0.98f to Color.Transparent), blendMode = BlendMode.DstIn)
+    }
+    picture.prepareToDraw()
+    return picture
 }
 
 @Composable

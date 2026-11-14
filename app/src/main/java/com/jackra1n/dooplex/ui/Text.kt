@@ -4,6 +4,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorProducer
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
@@ -71,6 +72,28 @@ internal fun Text(
         style = merged(style, color, fontSize, null, fontWeight, null, TextUnit.Unspecified, null, null, lineHeight),
         overflow = overflow,
         maxLines = maxLines,
+    )
+}
+
+/** [color] is read while drawing, so a colour that follows state repaints the text without recomposing it. */
+@Composable
+internal fun Text(
+    text: String,
+    color: ColorProducer,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    overflow: TextOverflow = TextOverflow.Clip,
+    maxLines: Int = Int.MAX_VALUE,
+    style: TextStyle = LocalTextStyle.current,
+) {
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = merged(style, Color.Unspecified, fontSize, null, fontWeight, null, TextUnit.Unspecified, null, null, TextUnit.Unspecified),
+        overflow = overflow,
+        maxLines = maxLines,
+        color = color,
     )
 }
 

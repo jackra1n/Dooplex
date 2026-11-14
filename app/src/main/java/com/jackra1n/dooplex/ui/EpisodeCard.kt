@@ -1,7 +1,5 @@
 package com.jackra1n.dooplex.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -15,16 +13,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -51,10 +44,8 @@ internal fun EpisodeCard(
     placeholderLabel: String,
     label: String? = null,
 ) {
-    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
-    val scale = animateFloatAsState(if (focused) 1.05f else 1f, tween(180), label = "episode focus")
-    val focus = rememberFocusLight(focused)
+    val focus = rememberFocusLight()
     val painter = rememberMovieArtworkPainter(item?.thumbPath, posters, artworkWidth, artworkWidth * 9 / 16, loadArtwork)
     val reveal = rememberArtworkReveal(item?.thumbPath, artworkWidth, painter != null)
     val status = remember(item) {
@@ -65,8 +56,8 @@ internal fun EpisodeCard(
         }.joinToString(" · ").ifBlank { " " }
     }
     Column(
-        modifier.zIndex(if (focused) 1f else 0f).onFocusChanged {
-            focused = it.isFocused
+        modifier.focusRaise(focus).onFocusChanged {
+            focus.focused = it.isFocused
             if (it.isFocused) {
                 focus.glow = glowColor(item?.thumbPath?.let { path -> posters.cachedAtmosphere(path, artworkWidth, artworkWidth * 9 / 16) })
                 onFocus()
@@ -74,7 +65,7 @@ internal fun EpisodeCard(
         }.cardClick(item, enabled, onClick)
             .semantics { contentDescription = if (item == null) "$placeholderLabel, loading. Select to retry loading."
                 else listOf(item.title, item.subtitle, status).filter { it.isNotBlank() }.joinToString(", ") }
-            .graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+            .focusScale(focus, 1.05f),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusGlow(focus, 9.dp).clip(shape).background(CinemaColors.Panel)
@@ -95,8 +86,7 @@ internal fun EpisodeCard(
                 }
             }
         }
-        Text(item?.title ?: "Loading…", color = CinemaColors.Foreground.copy(alpha = if (focused) 1f else 0.7f),
-            fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item?.title ?: "Loading…", color = focus.titleColor, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text((label ?: item?.subtitle)?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(status, color = if (item?.viewOffsetMs != null && item.viewOffsetMs > 0 && !item.watched) CinemaColors.Accent else CinemaColors.Muted,
             fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
