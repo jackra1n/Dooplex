@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyLayoutScrollScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
@@ -173,7 +174,8 @@ internal fun CollectionScreen(
     onPlay: (PlexBrowseItem, Boolean) -> Unit,
     onOpenShow: (PlexBrowseItem) -> Unit,
 ) {
-    val grid = rememberLazyGridState()
+    // Rows half a screen ahead are built in idle time, and rows just left are kept for the way back.
+    val grid = rememberLazyGridState(cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.5f) })
     val scroller = rememberGridRowScroller(grid)
     val requesters = remember(state, state.generation) { mutableStateMapOf<Int, FocusRequester>() }
     val sortFocus = remember { FocusRequester() }
@@ -191,7 +193,7 @@ internal fun CollectionScreen(
         object : BringIntoViewSpec {
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
                 // A directional reveal owns the animation; focus must not start a competing scroll.
-                if (directionalFocus || focus.navigationType != null) 0f
+                if (directionalFocus || scroller.moving || focus.navigationType != null) 0f
                 else super.calculateScrollDistance(offset, size, containerSize)
         }
     }
@@ -207,6 +209,7 @@ internal fun CollectionScreen(
     var awaitingJump by remember { mutableStateOf(false) }
     var returnAfterJump by remember { mutableStateOf(false) }
     var railRestorePending by remember { mutableStateOf(false) }
+    var railMounted by remember { mutableStateOf(false) }
     var lastRailKey by rememberSaveable(state.library.key) { mutableStateOf<String?>(null) }
     val railStatusFocus = remember { FocusRequester() }
     val alphabet = remember(state.alphabet) { state.alphabet.filter { it.count > 0 } }
@@ -247,6 +250,11 @@ internal fun CollectionScreen(
         restoreToHeader = false
         restoreEpoch++
         if (index / scroller.columns != from / scroller.columns) scroller.showCard(index)
+        // A card already on screen takes focus with the key press; the restore effect, a frame
+        // later, then only settles the state above.
+        if (grid.layoutInfo.visibleItemsInfo.any { it.index == index + COLLECTION_GRID_HEADER_ITEMS }) {
+            requesters[index]?.requestFocus()
+        }
     }
 
     fun closeSort() {
@@ -339,8 +347,8 @@ internal fun CollectionScreen(
         }
         wasIdle = !interactive
     }
-    LaunchedEffect(railRestorePending, alphabet, state.alphabetLoading, state.alphabetError, interactive, modalOpen) {
-        if (!railRestorePending || !interactive || modalOpen) return@LaunchedEffect
+    LaunchedEffect(railRestorePending, railMounted, alphabet, state.alphabetLoading, state.alphabetError, interactive, modalOpen) {
+        if (!railRestorePending || !railMounted || !interactive || modalOpen) return@LaunchedEffect
         withFrameNanos { }
         val key = lastRailKey?.takeIf { it in railRequesters } ?: alphabet.firstOrNull()?.key
         val requester = if (state.alphabetError != null) railStatusFocus else railRequesters[key] ?: railStatusFocus
@@ -449,6 +457,13 @@ internal fun CollectionScreen(
             }
         }
         val railOpacity = animateFloatAsState(if (showAlphabet) 1f else 0f, tween(150), label = "alphabet reveal")
+        // The hidden rail is some 27 buttons, so it is built once the page has faded in (or the
+        // moment it is needed) instead of in the frame that builds the grid.
+        LaunchedEffect(Unit) {
+            snapshotFlow { showAlphabet || dip.alpha == 1f && grid.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+            if (!showAlphabet) repeat(2) { withFrameNanos { } }
+            railMounted = true
+        }
 
         fun enterAlphabet() {
             lastRailKey = lastRailKey?.takeIf { it in railRequesters }
@@ -457,7 +472,7 @@ internal fun CollectionScreen(
             needsFocus = false
             pendingFocusIndex = null
             restoreEpoch++
-            if (showAlphabet) {
+            if (showAlphabet && railMounted) {
                 val target = if (state.alphabetError != null) railStatusFocus
                     else railRequesters[lastRailKey] ?: railStatusFocus
                 target.requestFocus()
@@ -681,7 +696,7 @@ internal fun CollectionScreen(
                     }
                 }
             }
-            CollectionAlphabetRail(
+            if (!railMounted) Spacer(Modifier.width(railWidth)) else CollectionAlphabetRail(
                 letters = alphabet,
                 noun = state.noun,
                 loading = state.alphabetLoading,

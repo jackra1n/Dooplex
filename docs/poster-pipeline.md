@@ -16,21 +16,33 @@ with `rememberMovieArtworkPainter` (`MovieArtwork.kt`).
 - **Keep-alive HTTP.** A fully read response returns its connection to the pool; only failures
   disconnect.
 - **Decoding is one at a time** (`decodeSlot`), off the main thread, with size and pixel limits.
+- **Workers give way to the UI.** They run on four threads of their own, one step above
+  background priority (as Glide's do), not on `Dispatchers.IO` at normal priority, and the colour
+  extraction runs on the same thread instead of hopping to `Dispatchers.Default`. Added 2026-11-13.
+  Lower priority could make posters arrive later, but on the box it did not: from cold memory a
+  poster waited 14–17 ms on the branch and 16–20 ms on main (2026-11-14, whole branch against
+  main, see [measuring-performance.md](measuring-performance.md)).
 - **Lookahead.** Grids warm the rows ahead of the scroll direction one image at a time, and only
   when no visible request is waiting (`awaitIdle`).
 
 ## Sizes
 
 Artwork is requested from Plex's photo transcoder at the size it is drawn, rounded up to a bucket
-(`artworkBucket`: 192, 256, 384 or 512 px wide). On the box, Home's shelves (7 cards across) use
-256 × 384 px, about 393 KB decoded; the 6-column library grids use 384 × 576 px, about 885 KB.
+(`artworkBucket`: 192, 256, 288, 384 or 512 px wide). On the box, Home's shelves (7 cards across)
+use 256 × 384 px, about 393 KB decoded; the 6-column library grids use 288 × 432 px, about 486 KB.
+
+The 288 bucket exists for those grids (2026-11-13): their cards are 267 px wide, 288 px when
+focused (× 1.08), and used to round up to 384 × 576 px, about 885 KB each for pixels never shown.
+Posters cached on disk at the old size are downloaded once more and age out of the disk cache.
+At 288 px the 150 posters of a benchmark pass fit in the 96 MiB of decoded posters, so a warm
+run of three passes waits for none; at 384 px it waited for 103–124 (2026-11-14).
 
 ## Caches
 
 | Cache | Limit | Notes |
 | --- | --- | --- |
 | Memory | 96 MiB of decoded bitmaps | LRU. Bitmaps are never recycled on eviction, because a card may still draw one. |
-| Disk | 256 MiB, 8,192 files, 8 MiB per image | `cacheDir/posters-v1`. One directory scan builds an in-memory LRU index, shared by every repository in the process; reads and writes then touch only their own file. Writes go to a temporary file and are renamed into place. |
+| Disk | 256 MiB, 8,192 files, 8 MiB per image | `cacheDir/posters-v1`. One directory scan builds an in-memory LRU index, shared by every repository in the process and started when the first repository is created, so it overlaps the Home request instead of holding up the first posters; reads and writes then touch only their own file. Writes go to a temporary file and are renamed into place. |
 
 Disk names are SHA-256 hashes that include the server and account, so the token never appears in a
 file name and two accounts never share artwork.

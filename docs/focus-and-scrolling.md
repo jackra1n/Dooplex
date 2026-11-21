@@ -25,10 +25,24 @@ scrolls the focused item to 30% of the container, which caused most of the scrol
   row rests (just under the header), on one critically damped spring (stiffness 170). A new key
   retargets the running motion and keeps its speed, so a held D-pad glides instead of stepping. It
   also handles the header and the end of the list.
-- **While the scroller drives, bring-into-view is off** (`directionalFocus` makes the grid's spec
-  return 0), so the focus system does not start a second scroll that fights the first.
+  A glide starts at the saved speed only when it replaces one still running; a jump, or a glide
+  that ended or was cancelled by another scroll, leaves none. The speed used to survive those, and
+  a second key arriving before the next glide had started then launched it at the old speed:
+  upwards at the top of the grid, where the edge check stops it at once. Seen once in 30 fast
+  bursts on the emulator (2026-11-13): focus moved to the right card and the grid did not scroll.
+  The cause is read from the code, not reproduced.
+- **While the scroller drives, bring-into-view is off** (`directionalFocus` or a running glide
+  makes the grid's spec return 0), so the focus system does not start a second scroll that fights
+  the first. `directionalFocus` alone was not enough: the restore effect clears it right after
+  requesting focus, and the bring-into-view that focus change causes is worked out later. It then
+  cancelled the glide and moved the grid only far enough to show the row. Measured on the box
+  (2026-11-14): a single Down asked for 513 px and the glide got 10 to 170 px in 2 to 4 frames; a
+  held burst lost its last glide the same way. Now each glide runs its full 513 px in 44 frames.
 - **Posters' own Up and Down are handled in `onPreviewKeyEvent`**, moving focus by one row
   (`movePosterFocus`), instead of Compose's geometric focus search.
+  A target card already on screen takes focus inside the key press (2026-11-13); before, every
+  press waited a frame for the restore effect, which still runs afterwards to settle the state and
+  is the only path for a card that is not laid out yet.
 
 ## Tabs and the top bar
 
@@ -89,3 +103,8 @@ leftover developer screen and is gone. Switching servers and signing out live in
 `rememberLazyListState(cacheWindow = LazyLayoutCacheWindow(…))` composes rows ahead in idle time:
 one screen ahead and half behind on the Home page, half a screen ahead in each shelf. Without it,
 the first Down into a new shelf composed the whole shelf inside the frame.
+
+The library grids use the same window, half a screen ahead and half behind (2026-11-13, not
+measured on its own; they had the default one-row prefetch, which starts only once a scroll is
+under way and drops a row the moment it leaves). Cached rows are composed but not placed, so they are missing
+from `visibleItemsInfo`; keep checking that before focusing a card or the header.

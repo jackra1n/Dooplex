@@ -31,7 +31,8 @@ def digest(event):
     kind = event.get("event")
     where = event.get("screen") or "-"
     if kind == "session":
-        return f"session {event.get('device')} render {event.get('render')} display {event.get('display')}"
+        return (f"session {event.get('device')} render {event.get('render')} display {event.get('display')}"
+                f" compiled code {event.get('odexBytes', 0) // 1024} KiB from a {event.get('compiledProfileBytes', 0)} B profile")
     if kind == "first-frame":
         return f"first frame after {event.get('msSinceStart')} ms"
     if kind == "slow-frame" and event.get("ms", 0) >= SLOW_MS:

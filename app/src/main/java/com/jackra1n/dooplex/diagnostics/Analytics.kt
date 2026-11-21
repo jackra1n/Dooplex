@@ -81,6 +81,8 @@ internal object Analytics {
             "render" to "${render.widthPixels}x${render.heightPixels}@${render.density}",
             "display" to "${mode?.physicalWidth}x${mode?.physicalHeight}@$refresh",
             "memoryClassMb" to activity.getSystemService(ActivityManager::class.java).memoryClass,
+            "odexBytes" to odexFile(activity).length(),
+            "compiledProfileBytes" to File("/data/misc/profiles/ref/${activity.packageName}/primary.prof").length(),
         )
         val budget = (1_000_000_000L / refresh).toLong()
         var lastVsync = 0L
@@ -133,6 +135,19 @@ internal object Analytics {
                 handler.postDelayed(this, FLUSH_MS)
             }
         }, FLUSH_MS)
+    }
+
+    /**
+     * Where ART keeps this install's compiled code. A fresh install has next to none and runs
+     * interpreted and JIT-compiled until Android's idle-time dexopt compiles it from a profile.
+     */
+    private fun odexFile(activity: Activity): File {
+        val abi = Build.SUPPORTED_ABIS.first()
+        val instructionSet = when {
+            abi.startsWith("arm") -> if (Process.is64Bit()) "arm64" else "arm"
+            else -> if (Process.is64Bit()) "x86_64" else "x86"
+        }
+        return File(File(activity.applicationInfo.sourceDir).parentFile, "oat/$instructionSet/base.odex")
     }
 
     /** The cause the next slow frames are blamed on, such as "key:DPAD_DOWN" or "hero:swap". */

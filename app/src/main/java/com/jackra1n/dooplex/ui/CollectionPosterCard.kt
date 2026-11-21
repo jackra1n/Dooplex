@@ -1,7 +1,5 @@
 package com.jackra1n.dooplex.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -15,16 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -52,13 +44,11 @@ internal fun CollectionPosterCard(
     onClick: () -> Unit,
     placeholderLabel: String,
 ) {
-    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
-    val scale = animateFloatAsState(if (focused) FOCUS_SCALE else 1f, tween(180), label = "poster focus")
-    val focus = rememberFocusLight(focused)
+    val focus = rememberFocusLight()
     Column(
-        modifier.zIndex(if (focused) 1f else 0f).onFocusChanged {
-            focused = it.isFocused
+        modifier.focusRaise(focus).onFocusChanged {
+            focus.focused = it.isFocused
             if (it.isFocused) {
                 focus.glow = glowColor(item?.thumbPath?.let { path -> posters.cachedAtmosphere(path, artworkWidth, artworkWidth * 3 / 2) })
                 onFocus()
@@ -67,7 +57,7 @@ internal fun CollectionPosterCard(
             contentDescription = if (item == null) "$placeholderLabel, loading. Select to load this item."
                 else listOfNotNull(item.title, item.subtitle.takeIf { it.isNotBlank() },
                     if (item.watched) "Watched" else if (item.viewOffsetMs > 0) "Partially watched" else null).joinToString(", ")
-        }.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+        }.focusScale(focus, FOCUS_SCALE),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).focusGlow(focus, 9.dp).clip(shape)
@@ -89,8 +79,7 @@ internal fun CollectionPosterCard(
                 }
             }
         }
-        Text(item?.title ?: "Loading…", color = if (focused) CinemaColors.Foreground else CinemaColors.Foreground.copy(alpha = 0.7f),
-            fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item?.title ?: "Loading…", color = focus.titleColor, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(item?.subtitle?.ifBlank { " " } ?: " ", color = CinemaColors.Muted, fontSize = 14.sp,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

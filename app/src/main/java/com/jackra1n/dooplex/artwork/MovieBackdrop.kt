@@ -98,8 +98,12 @@ internal fun MovieBackdrop(
             current = next
             return@LaunchedEffect
         }
-        val blended = previous.blend(current, fade.value)
-        val (under, over) = withContext(Dispatchers.Default) { washImage(blended, screen) to washImage(next, screen) }
+        // Only an interrupted fade needs its halfway wash drawn; a finished one is the current image.
+        val settled = currentImage.takeIf { fade.value == 1f }
+        val blended = if (settled != null) current else previous.blend(current, fade.value)
+        val (under, over) = withContext(Dispatchers.Default) {
+            (settled ?: renderWash(blended, screen)) to washImage(next, screen)
+        }
         previous = blended
         current = next
         previousImage = under
@@ -129,11 +133,21 @@ private fun WashImage(image: ImageBitmap, modifier: Modifier) {
 /**
  * The wash is soft enough to render at 1/8 size and stretch, so each frame the GPU fills one texture
  * instead of the screen gradient plus four colour pools. Rendering happens off the main thread, and
- * recently shown washes are kept so revisiting a poster costs nothing.
+ * recently shown washes are kept so revisiting a poster costs nothing. Halfway blends are one-offs
+ * and stay out of the cache.
  */
 private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
     val key = colors to screen
     synchronized(washCache) { washCache[key] }?.let { return it }
+    val image = renderWash(colors, screen)
+    synchronized(washCache) {
+        washCache[key] = image
+        if (washCache.size > WASH_CACHE) washCache.remove(washCache.keys.first())
+    }
+    return image
+}
+
+private fun renderWash(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
     val image = ImageBitmap(
         (screen.width / WASH_SCALE).toInt().coerceAtLeast(1),
         (screen.height / WASH_SCALE).toInt().coerceAtLeast(1),
@@ -144,10 +158,6 @@ private fun washImage(colors: MovieAtmosphere, screen: IntSize): ImageBitmap {
         }
     }
     image.prepareToDraw()
-    synchronized(washCache) {
-        washCache[key] = image
-        if (washCache.size > WASH_CACHE) washCache.remove(washCache.keys.first())
-    }
     return image
 }
 
@@ -186,21 +196,19 @@ private fun DrawScope.drawWash(colors: MovieAtmosphere) {
 }
 
 /**
- * Samples only 18×27 pixels off-main once per repository bitmap. Hue buckets preserve
- * distinct saturated regions instead of averaging complementary colors into a gray wash.
+ * Samples only 18×27 pixels, once per repository bitmap, on the thread that decoded it. Hue
+ * buckets preserve distinct saturated regions instead of averaging complementary colors into gray.
  * Region-weighted selection favors the poster's layout, with separated hues where available.
  * Selected hues blend toward luminance gray so artwork stays the focus, not the background.
  * Brightness is capped before compositing; dim artwork is never amplified.
  */
-internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = withContext(Dispatchers.Default) {
+internal fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere {
     val hueBuckets = 12
     val neutralBucket = hueBuckets
     // Each bucket stores weighted RGB, total weight and three spatial-region weights.
     val stride = 7
     val sums = FloatArray((hueBuckets + 1) * stride)
-    val context = currentCoroutineContext()
     for (row in 0 until 27) {
-        context.ensureActive()
         val y = ((row + 0.5f) * bitmap.height / 27).toInt().coerceAtMost(bitmap.height - 1)
         for (column in 0 until 18) {
             val x = ((column + 0.5f) * bitmap.width / 18).toInt().coerceAtMost(bitmap.width - 1)
@@ -288,6 +296,5 @@ internal suspend fun extractMovieAtmosphere(bitmap: Bitmap): MovieAtmosphere = w
             neutralBucket
         }
     }
-    context.ensureActive()
-    MovieAtmosphere(color(selected[0]), color(selected[1]), color(selected[2]))
+    return MovieAtmosphere(color(selected[0]), color(selected[1]), color(selected[2]))
 }
