@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.2.0](https://github.com/jackra1n/Dooplex/compare/0.1.0...0.2.0) (2026-11-21)
+
+
+### Features
+
+* report the install's compilation state to analytics ([981374c](https://github.com/jackra1n/Dooplex/commit/981374c82a6302ba352919ec47870efd2be5e1fc))
+
+
+### Bug Fixes
+
+* let a grid row glide finish instead of bring-into-view cutting it ([c55d432](https://github.com/jackra1n/Dooplex/commit/c55d43286e84da26f8a9f4bf9e9784366e4c8df2))
+* start a grid glide at speed only when it replaces a running one ([48a3be6](https://github.com/jackra1n/Dooplex/commit/48a3be661a8069fa6be79dd454e2fcce810e7ec3))
+
+
+### Performance
+
+* bake the hero's shading into its bitmap ([5d822a3](https://github.com/jackra1n/Dooplex/commit/5d822a3b819fd74c3555ee94f3ff9bb7e6f037ea))
+* build the alphabet rail after the page has faded in ([c37f0d5](https://github.com/jackra1n/Dooplex/commit/c37f0d599dba8df32fee073b64d84c707e4df3fb))
+* decode grid posters at 288 px instead of 384 ([e9613f9](https://github.com/jackra1n/Dooplex/commit/e9613f98480906856fdd27d56454ec637823b7a3))
+* draw one wash per background change ([05bd821](https://github.com/jackra1n/Dooplex/commit/05bd821a95a17e436b2d4fe6d6689c91db4f6ef6))
+* extract poster colours on the decode thread ([c209251](https://github.com/jackra1n/Dooplex/commit/c209251e87137edd9caf46657e4324bce740f408))
+* focus a card without recomposing it ([f67f8ea](https://github.com/jackra1n/Dooplex/commit/f67f8eaf1657baea7a60257281bfefc96d7098d5))
+* focus a visible poster with the key press ([3d0d6d9](https://github.com/jackra1n/Dooplex/commit/3d0d6d94048ba1b45ca521a380b7cb6dbbddadc9))
+* further improve overall performance and smoothness ([8225a4c](https://github.com/jackra1n/Dooplex/commit/8225a4cb0d8ea7d690782a89f5e68459319dfc53))
+* prefetch library grid rows in a cache window ([2d6222b](https://github.com/jackra1n/Dooplex/commit/2d6222bd154ecea80e5499ae6c349fbc1294c7f0))
+* run poster workers on low-priority threads ([beb6928](https://github.com/jackra1n/Dooplex/commit/beb6928a5c56340a2c41aaa91513de90c7600522))
+* scan the poster disk cache when the repository opens ([a6fa05b](https://github.com/jackra1n/Dooplex/commit/a6fa05bb11d97d6bd41da25456f517b0252b0862))
+* start no coroutines for posters already in memory ([79c29e2](https://github.com/jackra1n/Dooplex/commit/79c29e2a7514dd9844bc20f4a1d0e3dff25df8c7))
+
+
+### Documentation
+
+* note the odex size of a fresh install ([013e0ab](https://github.com/jackra1n/Dooplex/commit/013e0abaa102a41f440229328b91950a9f3dce17))
+* record the box A/B of the review branch ([4cf740a](https://github.com/jackra1n/Dooplex/commit/4cf740a9bc4404b69864a8187ac170f0aa913230))
+
 ## 0.1.0 (2026-10-29)
 
 
